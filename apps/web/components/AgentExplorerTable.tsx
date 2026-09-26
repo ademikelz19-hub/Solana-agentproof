@@ -25,10 +25,26 @@ const PAGE_SIZE = 25;
 
 export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListItem[]; totalCount?: number }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterMode, setFilterMode] = useState<'ALL' | 'MONITORED' | 'WITH_SERVICES' | 'RESOLVED'>('ALL');
+  const [filterMode, setFilterMode] = useState<'ALL' | 'UNIQUE' | 'WITH_SERVICES' | 'MONITORED' | 'RESOLVED'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Precompute name frequency to identify batch-minted agent templates (e.g. Ave.ai)
+  const nameCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const a of agents) {
+      const n = (a.name ?? a.id).trim().toLowerCase();
+      counts[n] = (counts[n] ?? 0) + 1;
+    }
+    return counts;
+  }, [agents]);
+
+  const uniqueCount = useMemo(() => {
+    return Object.keys(nameCounts).length;
+  }, [nameCounts]);
+
   const filteredAgents = useMemo(() => {
+    const seenNames = new Set<string>();
+
     return agents.filter((agent) => {
       // Search filter
       const matchesSearch =
@@ -48,6 +64,14 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
       }
       if (filterMode === 'RESOLVED') {
         return agent.metadataResolved === true;
+      }
+      if (filterMode === 'UNIQUE') {
+        const key = (agent.name ?? agent.id).trim().toLowerCase();
+        if (seenNames.has(key)) {
+          return false;
+        }
+        seenNames.add(key);
+        return true;
       }
       return true;
     });
@@ -162,6 +186,17 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
             <button
               type="button"
               onClick={() => {
+                setFilterMode('UNIQUE');
+                setCurrentPage(1);
+              }}
+              className={`btn btn-sm ${filterMode === 'UNIQUE' ? 'btn-primary' : 'btn-secondary'}`}
+              title="Show only 1 representative agent per template name (hides mass-minted Ave.ai duplicates)"
+            >
+              Unique Names ({uniqueCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setFilterMode('RESOLVED');
                 setCurrentPage(1);
               }}
@@ -239,13 +274,14 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
                 {paginatedAgents.map((agent) => {
                   const avail = agent.availabilityPct;
                   const isOnline = agent.latestOutcome === 'SUCCESS';
+                  const batchCount = nameCounts[(agent.name ?? agent.id).trim().toLowerCase()] ?? 1;
 
                   return (
                     <tr key={agent.id}>
                       {/* Agent Identity */}
                       <td>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                             <Link
                               href={`/agents/${agent.chain}/${agent.id}`}
                               style={{
@@ -261,6 +297,22 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
                             <span className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                               #{agent.onchainId}
                             </span>
+                            {batchCount > 1 && (
+                              <span
+                                style={{
+                                  fontSize: '0.65rem',
+                                  padding: '0.1rem 0.35rem',
+                                  borderRadius: 4,
+                                  background: 'rgba(240, 185, 11, 0.1)',
+                                  border: '1px solid rgba(240, 185, 11, 0.3)',
+                                  color: 'var(--accent-bnb)',
+                                  fontFamily: 'var(--font-mono)',
+                                }}
+                                title={`Batch-minted identity: ${batchCount} on-chain tokens share this template name`}
+                              >
+                                {batchCount}x Batch
+                              </span>
+                            )}
                           </div>
                           {agent.description && (
                             <span
@@ -365,6 +417,7 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
           <div className="mobile-only" style={{ flexDirection: 'column', gap: '0.75rem' }}>
             {paginatedAgents.map((agent) => {
               const avail = agent.availabilityPct;
+              const batchCount = nameCounts[(agent.name ?? agent.id).trim().toLowerCase()] ?? 1;
 
               return (
                 <div
@@ -389,10 +442,26 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
                       >
                         {agent.name ?? agent.id}
                       </Link>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.2rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
                         <span className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                           #{agent.onchainId}
                         </span>
+                        {batchCount > 1 && (
+                          <span
+                            style={{
+                              fontSize: '0.65rem',
+                              padding: '0.1rem 0.35rem',
+                              borderRadius: 4,
+                              background: 'rgba(240, 185, 11, 0.1)',
+                              border: '1px solid rgba(240, 185, 11, 0.3)',
+                              color: 'var(--accent-bnb)',
+                              fontFamily: 'var(--font-mono)',
+                            }}
+                            title={`Batch-minted identity: ${batchCount} on-chain tokens share this template name`}
+                          >
+                            {batchCount}x Batch
+                          </span>
+                        )}
                         <CopyButton text={agent.id} label="ID" />
                       </div>
                     </div>

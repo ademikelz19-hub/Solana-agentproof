@@ -1,74 +1,107 @@
 /**
- * Normalizes already-validated raw ERC-8004-style metadata (see
- * `@agentproof/core`'s `rawAgentMetadataSchema`) into AgentProof's own
- * `AgentService[]` domain type.
- *
- * ERC-8004 metadata may declare services via the current "services" key or
- * the legacy "endpoints" key, or both. Per the build prompt: prefer
- * "services" when both exist, and never silently invent a protocol/url
- * AgentProof didn't actually see.
+ * Normalizes SAID Protocol agent metadata and declared endpoints into AgentService[] models.
  */
 
 import { randomUUID } from 'node:crypto';
-import type { AgentService, ChainId, Provenance, RawAgentMetadata, ServiceProtocol } from '@agentproof/core';
+import type {
+  AgentService,
+  ChainId,
+  EndpointType,
+  Provenance,
+  RawSaidAgent,
+  ServiceProtocol,
+} from '@agentproof/core';
 
-function inferProtocol(raw: { type?: string; protocol?: string; name?: string }): ServiceProtocol {
-  const label = (raw.protocol ?? raw.type ?? raw.name ?? '').toUpperCase();
-  if (label.includes('A2A')) return 'A2A';
-  if (label.includes('MCP')) return 'MCP';
-  if (label.includes('HTTP') || label.includes('WEB')) return 'HTTP';
-  return 'UNKNOWN';
-}
-
-export function normalizeAgentServices(
+export function normalizeSaidServices(
   agentId: string,
   chain: ChainId,
-  raw: RawAgentMetadata,
+  raw: RawSaidAgent,
   provenance: Provenance,
 ): AgentService[] {
-  const hasServices = Array.isArray(raw.services) && raw.services.length > 0;
+  const services: AgentService[] = [];
 
-  if (hasServices) {
-    const out: AgentService[] = [];
-    for (const svc of raw.services ?? []) {
-      const url = svc.url ?? svc.endpoint;
-      if (!url) continue;
-      const rawId = svc.id ?? svc.name ?? randomUUID();
-      out.push({
-        id: `${agentId}:${rawId}`,
-        agentId,
-        chain,
-        declarationForm: 'SERVICES' as const,
-        protocol: inferProtocol({
-          ...(svc.type ? { type: svc.type } : {}),
-          ...(svc.protocol ? { protocol: svc.protocol } : {}),
-          ...(svc.name ? { name: svc.name } : {}),
-        }),
-        url,
-        provenance,
-      });
-    }
-    return out;
-  }
-
-  const endpoints = raw.endpoints ?? [];
-  const out: AgentService[] = [];
-  for (const ep of endpoints) {
-    const url = ep.url ?? ep.endpoint;
-    if (!url) continue; // never invent a URL that wasn't actually declared
-    const rawId = ep.id ?? ep.name ?? randomUUID();
-    out.push({
-      id: `${agentId}:${rawId}`,
+  // 1. MCP Endpoint
+  if (raw.mcpEndpoint && typeof raw.mcpEndpoint === 'string' && raw.mcpEndpoint.trim().length > 0) {
+    const url = raw.mcpEndpoint.trim();
+    services.push({
+      id: `${agentId}:mcp`,
       agentId,
       chain,
-      declarationForm: 'ENDPOINTS' as const,
-      protocol: inferProtocol({
-        ...(ep.type ? { type: ep.type } : {}),
-        ...(ep.name ? { name: ep.name } : {}),
-      }),
+      endpointType: 'MCP',
+      protocol: 'MCP',
       url,
+      enabled: true,
+      failureCount: 0,
       provenance,
     });
   }
-  return out;
+
+  // 2. A2A Endpoint
+  if (raw.a2aEndpoint && typeof raw.a2aEndpoint === 'string' && raw.a2aEndpoint.trim().length > 0) {
+    const url = raw.a2aEndpoint.trim();
+    services.push({
+      id: `${agentId}:a2a`,
+      agentId,
+      chain,
+      endpointType: 'A2A',
+      protocol: 'A2A',
+      url,
+      enabled: true,
+      failureCount: 0,
+      provenance,
+    });
+  }
+
+  // 3. Website or HTTP service
+  if (raw.website && typeof raw.website === 'string' && raw.website.trim().length > 0) {
+    const url = raw.website.trim();
+    services.push({
+      id: `${agentId}:web`,
+      agentId,
+      chain,
+      endpointType: 'HTTP',
+      protocol: 'HTTP',
+      url,
+      enabled: true,
+      failureCount: 0,
+      provenance,
+    });
+  }
+
+  // 4. Custom key-value endpoints dictionary if present
+  if (raw.endpoints && typeof raw.endpoints === 'object') {
+    for (const [key, value] of Object.entries(raw.endpoints)) {
+      if (typeof value === 'string' && value.trim().length > 0) {
+        const upperKey = key.toUpperCase();
+        let protocol: ServiceProtocol = 'HTTP';
+        let endpointType: EndpointType = 'SERVICE';
+
+        if (upperKey.includes('MCP')) {
+          protocol = 'MCP';
+          endpointType = 'MCP';
+        } else if (upperKey.includes('A2A')) {
+          protocol = 'A2A';
+          endpointType = 'A2A';
+        }
+
+        // Avoid duplicate IDs
+        const svcId = `${agentId}:${key.toLowerCase()}`;
+        if (!services.some((s) => s.id === svcId)) {
+          services.push({
+            id: svcId,
+            agentId,
+            chain,
+            endpointType,
+            protocol,
+            url: value.trim(),
+            enabled: true,
+            failureCount: 0,
+            provenance,
+          });
+        }
+      }
+    }
+  }
+
+  return services;
 }

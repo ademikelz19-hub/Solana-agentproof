@@ -1,4 +1,11 @@
-# AgentProof — 3-Minute BNB Grant Reviewer Guide
+# AgentProof — 3-Minute BNB Grant Reviewer Guide (Legacy Archive)
+
+> [!NOTE]
+> **Legacy Archive**: This guide was prepared for the historical BNB grant evaluation.
+> For the current **SAID Protocol / Solana Mainnet** evaluation guide and quickstart, see:
+> - [`GRANT_READINESS.md`](../GRANT_READINESS.md)
+> - [`GRANT_ROADMAP.md`](../GRANT_ROADMAP.md)
+> - The live demo route: `/grant-demo`
 
 This guide is designed for grant reviewers, developers, and ecosystem evaluators assessing AgentProof in approximately 3 minutes.
 

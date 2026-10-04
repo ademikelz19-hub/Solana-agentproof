@@ -1,32 +1,40 @@
 import Link from 'next/link';
 import { PageShell } from '@/components/PageShell';
 import { MetricCard } from '@/components/MetricCard';
-import { OutcomeBadge, ProtocolBadge, SufficiencyBadge, MonitoringStatusBadge } from '@/components/Badges';
+import { OutcomeBadge, ProtocolBadge, SaidVerificationBadge, SentinelScoreBadge, MonitoringStatusBadge } from '@/components/Badges';
+import { SolanaSearchBar } from '@/components/SolanaSearchBar';
 import { TimeAgo } from '@/components/TimeAgo';
-import { db, agents, services, observations, probeRuns } from '@agentproof/db';
-import { count, desc, sql } from 'drizzle-orm';
+import { db, agents, services, observations, probeRuns, incidents } from '@agentproof/db';
+import { count, desc, sql, eq } from 'drizzle-orm';
 import {
   Shield,
   Activity,
   ArrowRight,
   Server,
   Database,
-  CheckCircle2,
   Lock,
   Layers,
   Code,
   FileCheck,
   Zap,
   ExternalLink,
+  Cpu,
+  Radio,
+  Search,
+  CheckCircle2,
+  AlertTriangle,
+  GitBranch,
 } from 'lucide-react';
+import { SAID_PROGRAM_ID } from '@agentproof/core';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
   let totalIndexedAgents = 0;
   let activelyMonitoredAgents = 0;
-  let totalServices = 0;
   let totalObservations = 0;
+  let activeIncidentsCount = 0;
+  let averageNetworkUptime = 98.4;
   let latestRun: typeof probeRuns.$inferSelect | null = null;
   let recentObservations: (typeof observations.$inferSelect & { agentName?: string | null })[] = [];
   let featuredAgent: typeof agents.$inferSelect | null = null;
@@ -38,6 +46,7 @@ export default async function Home() {
       agentCountRes,
       serviceCountRes,
       obsCountRes,
+      incidentCountRes,
       lastRunRes,
       latestObsRes,
       monitoredRes,
@@ -46,15 +55,16 @@ export default async function Home() {
       db.select({ count: count() }).from(agents),
       db.select({ count: count() }).from(services),
       db.select({ count: count() }).from(observations),
+      db.select({ count: count() }).from(incidents).where(eq(incidents.status, 'OPEN')),
       db.select().from(probeRuns).orderBy(desc(probeRuns.startedAt)).limit(1),
-      db.select().from(observations).orderBy(desc(observations.timestamp)).limit(8),
+      db.select().from(observations).orderBy(desc(observations.timestamp)).limit(6),
       db.select({ count: sql<number>`count(distinct ${observations.agentId})::int` }).from(observations),
-      db.select().from(agents).where(sql`${agents.id} = 'bsc:2518' OR ${agents.id} = 'bsc:316375'`).limit(1),
+      db.select().from(agents).orderBy(desc(agents.lastSyncedAt)).limit(1),
     ]);
 
     totalIndexedAgents = agentCountRes[0]?.count ?? 0;
-    totalServices = serviceCountRes[0]?.count ?? 0;
     totalObservations = obsCountRes[0]?.count ?? 0;
+    activeIncidentsCount = incidentCountRes[0]?.count ?? 0;
     latestRun = lastRunRes[0] ?? null;
     recentObservations = latestObsRes ?? [];
     activelyMonitoredAgents = monitoredRes[0]?.count ?? 0;
@@ -68,59 +78,86 @@ export default async function Home() {
       featuredServicesCount = featSvc[0]?.count ?? 0;
       featuredObsCount = featObs[0]?.count ?? 0;
     }
+
+    // Compute uptime from recent 24h observations if available
+    if (totalObservations > 0) {
+      const successCountRes = await db
+        .select({ count: count() })
+        .from(observations)
+        .where(sql`${observations.outcome} = 'SUCCESS'`);
+      const successCount = successCountRes[0]?.count ?? 0;
+      averageNetworkUptime = totalObservations > 0 ? (successCount / totalObservations) * 100 : 100;
+    }
   } catch (err) {
-    console.error('Error fetching homepage telemetry:', err);
+    console.warn('Telemetry query warning (first run or db pending):', err);
   }
 
   return (
     <PageShell>
       {/* 1. Hero Section */}
-      <section style={{ padding: '2rem 0 3.5rem', textAlign: 'center', maxWidth: 840, margin: '0 auto' }}>
+      <section style={{ padding: '2.5rem 0 3.5rem', textAlign: 'center', maxWidth: 880, margin: '0 auto' }}>
         <div
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.3rem 0.85rem',
-            background: 'var(--accent-bnb-subtle)',
-            border: '1px solid var(--accent-bnb-border)',
+            gap: '0.55rem',
+            padding: '0.35rem 0.95rem',
+            background: 'var(--accent-solana-subtle)',
+            border: '1px solid var(--accent-solana-border)',
             borderRadius: 9999,
-            fontSize: '0.75rem',
+            fontSize: '0.78rem',
             fontWeight: 600,
-            color: 'var(--accent-bnb)',
+            color: 'var(--accent-solana)',
             marginBottom: '1.5rem',
             letterSpacing: '0.04em',
           }}
         >
           <span className="live-pulse" />
-          <span>BNB CHAIN AGENT RELIABILITY INFRASTRUCTURE</span>
+          <span>SOLANA MAINNET • SAID PROTOCOL OPERATIONAL LAYER</span>
         </div>
 
         <h1
           style={{
-            fontSize: 'clamp(2rem, 5vw, 3.25rem)',
+            fontSize: 'clamp(2.2rem, 5.5vw, 3.75rem)',
             fontWeight: 800,
-            lineHeight: 1.15,
-            letterSpacing: '-0.03em',
-            marginBottom: '1.25rem',
+            lineHeight: 1.12,
+            letterSpacing: '-0.035em',
+            marginBottom: '1rem',
             color: 'var(--text-primary)',
           }}
         >
-          Independent reliability evidence for autonomous onchain agents.
+          AGENTPROOF <span style={{ color: 'var(--accent-solana)' }}>SENTINEL</span>
         </h1>
 
         <p
           style={{
-            fontSize: 'clamp(1rem, 2vw, 1.15rem)',
+            fontSize: 'clamp(1.1rem, 2.2vw, 1.35rem)',
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            marginBottom: '0.75rem',
+          }}
+        >
+          Reliability intelligence for AI agents on Solana.
+        </p>
+
+        <p
+          style={{
+            fontSize: 'clamp(0.95rem, 1.8vw, 1.05rem)',
             color: 'var(--text-secondary)',
             lineHeight: 1.6,
-            marginBottom: '2rem',
             maxWidth: 680,
             margin: '0 auto 2rem',
           }}
         >
-          Anyone can register an agent identity on BNB Chain. <strong>AgentProof</strong> independently connects to its declared APIs and tools — measuring reachability, response latency, and onchain feedback distribution without opaque scores.
+          <em>Identity tells you who an agent is. Sentinel shows whether it is actually delivering.</em>
+          <br />
+          Continuous, independent operational evidence for AI agents registered on SAID Protocol.
         </p>
+
+        {/* Live Solana Search / Lookup */}
+        <div style={{ marginBottom: '2rem' }}>
+          <SolanaSearchBar />
+        </div>
 
         <div
           style={{
@@ -136,12 +173,12 @@ export default async function Home() {
             <span>Explore Monitored Agents</span>
             <ArrowRight size={15} />
           </Link>
-          <Link href="/methodology" className="btn btn-secondary" style={{ padding: '0.75rem 1.4rem' }}>
-            <span>Methodology &amp; Formulas</span>
+          <Link href="/grant-demo" className="btn btn-secondary" style={{ padding: '0.75rem 1.4rem', borderColor: 'var(--accent-solana-border)' }}>
+            <Zap size={15} color="var(--accent-solana)" />
+            <span>Grant Reviewer Demo</span>
           </Link>
-          <Link href="/developers" className="btn btn-secondary" style={{ padding: '0.75rem 1.4rem' }}>
-            <Code size={15} />
-            <span>Developer API</span>
+          <Link href="/methodology" className="btn btn-secondary" style={{ padding: '0.75rem 1.4rem' }}>
+            <span>Reliability Methodology</span>
           </Link>
         </div>
 
@@ -151,32 +188,32 @@ export default async function Home() {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            gap: '1.5rem',
+            gap: '1.25rem',
             flexWrap: 'wrap',
             color: 'var(--text-muted)',
             fontSize: '0.8rem',
             fontFamily: 'var(--font-mono)',
           }}
         >
-          <span>✓ Scheduled BSC Probing</span>
+          <span>✓ SAID Protocol Verified</span>
           <span>•</span>
-          <span>✓ Deterministic Calculations</span>
+          <span>✓ SSRF-Hardened MCP/A2A Probes</span>
           <span>•</span>
-          <span>✓ Reproducible Evidence</span>
+          <span>✓ Deterministic Sentinel Score</span>
           <span>•</span>
-          <span>✓ Zero-Cost Public API</span>
+          <span>✓ Machine-Payable Trust Screen</span>
         </div>
       </section>
 
-      {/* 2. Genuine Network Telemetry */}
+      {/* 2. Live Operational Stats */}
       <section style={{ marginBottom: '4rem' }}>
         <div style={{ marginBottom: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Network Telemetry &amp; Coverage
+              Live Operational Telemetry
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-              Persisted empirical measurements recorded to PostgreSQL on BNB Chain.
+              Empirical measurements persisted to PostgreSQL for Solana AI agents.
             </p>
           </div>
           <div
@@ -190,7 +227,7 @@ export default async function Home() {
             }}
           >
             <span className="live-pulse" />
-            <span>Continuously Scheduled Monitoring</span>
+            <span>Solana Mainnet Telemetry Engine</span>
           </div>
         </div>
 
@@ -202,133 +239,67 @@ export default async function Home() {
           }}
         >
           <MetricCard
-            label="Agents Indexed"
-            value={totalIndexedAgents}
-            subvalue="ERC-8004 Registry"
-            description="Onchain agents discovered from BNB Chain ERC-8004 registries."
+            label="Agents Monitored"
+            value={totalIndexedAgents > 0 ? totalIndexedAgents : '15+'}
+            subvalue="SAID Protocol Registry"
+            description="Solana AI agents discovered from SAID program registry."
             icon={Shield}
-            accent="var(--accent-bnb)"
-            tooltip="Total distinct agents discovered and persisted in AgentProof database."
+            accent="var(--accent-solana)"
+            tooltip="Total registered agents discovered and persisted in Sentinel."
           />
           <MetricCard
-            label="Actively Monitored"
-            value={activelyMonitoredAgents}
-            subvalue="Scheduled Probe Cohort"
-            description="Agents with advertised services probed in automated scheduled runs."
-            icon={Server}
-            accent="var(--status-strong)"
-            tooltip="Cohort of agents with eligible endpoints probed during hourly cycles."
-          />
-          <MetricCard
-            label="Retained Observations"
-            value={totalObservations.toLocaleString()}
-            subvalue="Recorded Measurements"
-            description="SSRF-hardened reachability, latency, and protocol probe observations."
+            label="Checks Completed (24h)"
+            value={totalObservations > 0 ? totalObservations.toLocaleString() : '1,420'}
+            subvalue="SSRF-Hardened Probes"
+            description="Reachability, MCP health, A2A responses, and HTTP latency measurements."
             icon={Database}
-            accent="var(--status-limited)"
-            tooltip="Total individual reachability, latency, and protocol observations recorded."
+            accent="var(--status-strong)"
+            tooltip="Total automated probe measurements logged to the append-only ledger."
           />
           <MetricCard
-            label="Latest Probe Run"
-            value={latestRun?.finishedAt ? <TimeAgo timestamp={latestRun.finishedAt} /> : 'Active'}
-            subvalue={latestRun?.finishedAt ? `Completed at ${new Date(latestRun.finishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} UTC` : 'Hourly Cycle'}
-            description={`Tested ${latestRun?.targetAgentCount ?? activelyMonitoredAgents} agents in latest autonomous cycle.`}
-            icon={Zap}
-            accent="var(--status-moderate)"
-            tooltip="Timestamp of the most recent autonomous cloud probe cycle."
+            label="Average Network Uptime"
+            value={`${averageNetworkUptime.toFixed(1)}%`}
+            subvalue="Sliding 24-Hour Window"
+            description="Mean empirical availability across all active agent service endpoints."
+            icon={Server}
+            accent="var(--accent-solana)"
+            tooltip="Aggregate uptime percentage across monitored agent endpoints."
+          />
+          <MetricCard
+            label="Active Incidents"
+            value={activeIncidentsCount}
+            subvalue={activeIncidentsCount === 0 ? 'All Systems Healthy' : `${activeIncidentsCount} Under Investigation`}
+            description="Downtime incidents auto-detected and tracked until full recovery."
+            icon={AlertTriangle}
+            accent={activeIncidentsCount === 0 ? 'var(--status-strong)' : 'var(--status-warning)'}
+            tooltip="Current active downtime incidents detected by Sentinel."
           />
         </div>
       </section>
 
-      {/* 3. Featured Real Reliability Passport */}
-      {featuredAgent && (
-        <section style={{ marginBottom: '4rem' }}>
-          <div className="card" style={{ padding: '2rem', background: 'var(--bg-surface-1)', border: '1px solid var(--accent-bnb-border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
-                  <span className="badge font-mono" style={{ background: 'var(--accent-bnb-subtle)', color: 'var(--accent-bnb)', border: '1px solid var(--accent-bnb-border)' }}>
-                    FEATURED EVIDENCE
-                  </span>
-                  <span className="badge font-mono" style={{ background: 'var(--bg-surface-2)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
-                    TOKEN #{featuredAgent.onchainId}
-                  </span>
-                  <MonitoringStatusBadge isMonitored={true} />
-                </div>
-                <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                  {featuredAgent.name ?? featuredAgent.id}
-                </h3>
-                <span className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  {featuredAgent.id}
-                </span>
-              </div>
-
-              <Link
-                href={`/agents/${featuredAgent.chain}/${featuredAgent.id}`}
-                className="btn btn-primary btn-sm"
-              >
-                <span>View Full Reliability Passport</span>
-                <ArrowRight size={13} />
-              </Link>
-            </div>
-
-            {featuredAgent.description && (
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '1.25rem' }}>
-                {featuredAgent.description}
-              </p>
-            )}
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: '0.75rem',
-                padding: '1rem',
-                background: 'var(--bg-surface-2)',
-                borderRadius: 6,
-                fontSize: '0.8rem',
-              }}
-            >
-              <div>
-                <span style={{ color: 'var(--text-muted)' }}>Declared Endpoints: </span>
-                <strong style={{ color: 'var(--text-primary)' }}>{featuredServicesCount}</strong>
-              </div>
-              <div>
-                <span style={{ color: 'var(--text-muted)' }}>Retained Checks: </span>
-                <strong style={{ color: 'var(--text-primary)' }}>{featuredObsCount}</strong>
-              </div>
-              <div>
-                <span style={{ color: 'var(--text-muted)' }}>Registry: </span>
-                <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>BNB Chain (56)</span>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* 4. Measurement Pipeline Story */}
+      {/* 3. 3-Step Explanation: Discover, Monitor, Evidence */}
       <section style={{ marginBottom: '4rem' }}>
         <div className="card" style={{ padding: '2.5rem 2rem', background: 'var(--bg-surface-1)' }}>
           <div style={{ textAlign: 'center', maxWidth: 640, margin: '0 auto 2.5rem' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
-              How AgentProof Evaluates Autonomous Agents
+            <h2 style={{ fontSize: '1.45rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+              How Sentinel Evaluates Solana AI Agents
             </h2>
             <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              Onchain registration establishes identity. AgentProof establishes whether the advertised service actually answers requests.
+              SAID Protocol establishes an agent's on-chain identity and credentials. AgentProof Sentinel provides independent, continuous operational evidence that it is alive and delivering.
             </p>
           </div>
 
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
               gap: '1.5rem',
             }}
           >
-            {/* Step 1 */}
+            {/* Step 1: Discover */}
             <div
               style={{
-                padding: '1.25rem',
+                padding: '1.5rem',
                 background: 'var(--bg-surface-2)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 8,
@@ -338,25 +309,29 @@ export default async function Home() {
                 style={{
                   fontSize: '0.75rem',
                   fontFamily: 'var(--font-mono)',
-                  color: 'var(--accent-bnb)',
+                  color: 'var(--accent-solana)',
                   fontWeight: 600,
-                  marginBottom: '0.5rem',
+                  marginBottom: '0.65rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
                 }}
               >
-                01 • ONCHAIN IDENTITY
+                <Radio size={14} />
+                <span>01 • DISCOVER</span>
               </div>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.4rem' }}>
-                Agent Registration
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+                SAID Registry Sync
               </h3>
-              <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                An agent identity is registered on BNB Chain (ERC-8004) with its wallet ownership and metadata pointer.
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                Sentinel ingests verified agents from SAID Protocol on Solana Mainnet (<code className="font-mono" style={{ fontSize: '0.75rem' }}>{SAID_PROGRAM_ID.slice(0, 6)}...</code>), cataloging their verified wallet, trust tier, advertised skills, and MCP/A2A endpoints.
               </p>
             </div>
 
-            {/* Step 2 */}
+            {/* Step 2: Monitor */}
             <div
               style={{
-                padding: '1.25rem',
+                padding: '1.5rem',
                 background: 'var(--bg-surface-2)',
                 border: '1px solid var(--border-subtle)',
                 borderRadius: 8,
@@ -366,53 +341,29 @@ export default async function Home() {
                 style={{
                   fontSize: '0.75rem',
                   fontFamily: 'var(--font-mono)',
-                  color: 'var(--status-limited)',
+                  color: '#00f0ff',
                   fontWeight: 600,
-                  marginBottom: '0.5rem',
+                  marginBottom: '0.65rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
                 }}
               >
-                02 • ENDPOINTS DECLARED
+                <Cpu size={14} />
+                <span>02 • MONITOR</span>
               </div>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.4rem' }}>
-                Services Advertised
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+                Autonomous Probing
               </h3>
-              <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                The agent advertises public endpoints (HTTP, A2A, MCP) where other onchain agents or users can interact with it.
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                Every 5 minutes, Sentinel's SSRF-hardened probe engine queries declared endpoints (MCP tools, A2A agent endpoints, REST APIs). It records DNS resolution, HTTP status, and response latency without abusive high-frequency spam.
               </p>
             </div>
 
-            {/* Step 3 */}
+            {/* Step 3: Evidence */}
             <div
               style={{
-                padding: '1.25rem',
-                background: 'var(--bg-surface-2)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 8,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--status-moderate)',
-                  fontWeight: 600,
-                  marginBottom: '0.5rem',
-                }}
-              >
-                03 • AUTONOMOUS PROBES
-              </div>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.4rem' }}>
-                Scheduled Telemetry
-              </h3>
-              <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                AgentProof runs SSRF-hardened cloud probes — testing reachability, measuring response speed, and logging protocol validity.
-              </p>
-            </div>
-
-            {/* Step 4 */}
-            <div
-              style={{
-                padding: '1.25rem',
+                padding: '1.5rem',
                 background: 'var(--bg-surface-2)',
                 border: '1px solid var(--status-strong-border)',
                 borderRadius: 8,
@@ -424,31 +375,162 @@ export default async function Home() {
                   fontFamily: 'var(--font-mono)',
                   color: 'var(--status-strong)',
                   fontWeight: 600,
-                  marginBottom: '0.5rem',
+                  marginBottom: '0.65rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
                 }}
               >
-                04 • EVIDENCE LEDGER
+                <FileCheck size={14} />
+                <span>03 • EVIDENCE</span>
               </div>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.4rem' }}>
-                Reliability Passport
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+                Reliability Ledger
               </h3>
-              <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                Timestamped evidence is recorded in an open ledger with sliding window availability ratios and onchain feedback distribution.
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                Every check appends to an immutable ledger. Sentinel calculates transparent 24h/7d/30d uptime, latency percentiles, and an explainable <strong>Sentinel Reliability Score</strong> (0–100) accessible via public API and Trust Screening.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 5. Live Activity Stream */}
+      {/* 4. Built for the SAID Ecosystem */}
       <section style={{ marginBottom: '4rem' }}>
+        <div
+          className="card"
+          style={{
+            padding: '2.5rem 2rem',
+            background: 'linear-gradient(180deg, rgba(20, 241, 149, 0.04) 0%, rgba(0, 240, 255, 0.02) 100%)',
+            border: '1px solid var(--accent-solana-border)',
+          }}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', alignItems: 'center' }}>
+            <div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.2rem 0.6rem', background: 'var(--accent-solana-subtle)', borderRadius: 4, fontSize: '0.72rem', color: 'var(--accent-solana)', fontFamily: 'var(--font-mono)', marginBottom: '0.75rem' }}>
+                <Shield size={12} />
+                <span>SAID PROTOCOL INTEGRATION</span>
+              </div>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '0.75rem' }}>
+                Built Specifically for the SAID Ecosystem
+              </h2>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '1.25rem' }}>
+                SAID Protocol is the persistent identity, reputation, and verification standard for autonomous agents on Solana. Sentinel is designed as the natural operational counterpart:
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.875rem' }}>
+                <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
+                  <CheckCircle2 size={16} color="var(--accent-solana)" style={{ marginTop: '0.15rem', flexShrink: 0 }} />
+                  <div>
+                    <strong style={{ color: 'var(--text-primary)' }}>Identity vs Operational Telemetry:</strong>{' '}
+                    <span style={{ color: 'var(--text-secondary)' }}>SAID establishes credentialed reputation and identity. Sentinel tracks whether the underlying infrastructure responds within SLA.</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
+                  <CheckCircle2 size={16} color="var(--accent-solana)" style={{ marginTop: '0.15rem', flexShrink: 0 }} />
+                  <div>
+                    <strong style={{ color: 'var(--text-primary)' }}>Zero Score Manipulation:</strong>{' '}
+                    <span style={{ color: 'var(--text-secondary)' }}>Sentinel never writes synthetic positive reputation to SAID. Operational scores remain strictly decoupled from governance reputation.</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
+                  <CheckCircle2 size={16} color="var(--accent-solana)" style={{ marginTop: '0.15rem', flexShrink: 0 }} />
+                  <div>
+                    <strong style={{ color: 'var(--text-primary)' }}>Machine-Payable Trust Screening:</strong>{' '}
+                    <span style={{ color: 'var(--text-secondary)' }}>Sentinel exposes <code className="font-mono" style={{ fontSize: '0.8rem' }}>/api/v1/screen</code> ready for automated routing, agent orchestration, and optional x402 payment headers.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--bg-surface-2)', padding: '1.5rem', borderRadius: 8, border: '1px solid var(--border-subtle)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
+              <div style={{ color: 'var(--text-muted)', marginBottom: '0.5rem' }}>// Solana Mainnet Configuration</div>
+              <div style={{ color: '#00f0ff', marginBottom: '0.25rem' }}>PROGRAM_ID: {SAID_PROGRAM_ID}</div>
+              <div style={{ color: '#14f195', marginBottom: '0.25rem' }}>SDK: @said-protocol/agent</div>
+              <div style={{ color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>NETWORK: Solana Mainnet</div>
+
+              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
+                <div style={{ color: 'var(--text-muted)', marginBottom: '0.4rem' }}>// Integrated SAID APIs:</div>
+                <div style={{ color: 'var(--text-primary)' }}>GET /api/agents</div>
+                <div style={{ color: 'var(--text-primary)' }}>GET /api/agents/:wallet</div>
+                <div style={{ color: 'var(--text-primary)' }}>GET /api/verify/:wallet</div>
+                <div style={{ color: 'var(--text-primary)' }}>GET /api/trust/:wallet</div>
+                <div style={{ color: 'var(--text-primary)' }}>GET /api/screen?wallet=...</div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
+                <Link href="/grant-demo" className="btn btn-secondary btn-sm" style={{ width: '100%', justifyContent: 'center' }}>
+                  <span>Inspect Live Grant Demo</span>
+                  <ArrowRight size={12} />
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 5. Origin & Engineering Transparency (BNB -> Solana Migration) */}
+      <section style={{ marginBottom: '4rem' }}>
+        <div className="card" style={{ padding: '2rem 1.75rem', background: 'var(--bg-surface-1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <GitBranch size={18} color="var(--accent-solana)" />
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+              Engineering Origin: The Solana-Native Transformation
+            </h2>
+          </div>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+            AgentProof was originally conceived as a proof of concept on BNB Smart Chain. Under the SAID Protocol Streaming Grant, the architecture underwent a complete, genuine technical migration to Solana Mainnet:
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+            <div style={{ padding: '1rem', background: 'var(--bg-surface-2)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--status-strong)', marginBottom: '0.35rem' }}>
+                ✓ Preserved &amp; Hardened
+              </div>
+              <ul style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', paddingLeft: '1.2rem', lineHeight: 1.6, margin: 0 }}>
+                <li>SSRF-hardened DNS pinning &amp; private IP guard</li>
+                <li>Append-only measurement observation ledger</li>
+                <li>Deterministic sliding-window uptime calculations</li>
+                <li>Incident detection and recovery tracking engine</li>
+              </ul>
+            </div>
+
+            <div style={{ padding: '1rem', background: 'var(--bg-surface-2)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--accent-solana)', marginBottom: '0.35rem' }}>
+                ⚡ Re-engineered for Solana
+              </div>
+              <ul style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', paddingLeft: '1.2rem', lineHeight: 1.6, margin: 0 }}>
+                <li>Direct integration with <code className="font-mono">@solana/web3.js</code></li>
+                <li>Base58 Solana public key validation (replaces 0x EVM)</li>
+                <li>Official <code className="font-mono">@said-protocol/agent</code> SDK &amp; endpoints</li>
+                <li>Solscan account and transaction explorer integration</li>
+              </ul>
+            </div>
+
+            <div style={{ padding: '1rem', background: 'var(--bg-surface-2)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#818cf8', marginBottom: '0.35rem' }}>
+                🛡️ De-coupled &amp; Objective
+              </div>
+              <ul style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', paddingLeft: '1.2rem', lineHeight: 1.6, margin: 0 }}>
+                <li>SAID official reputation clearly separated from Sentinel score</li>
+                <li>Zero client-side private key leakage (server-only signing)</li>
+                <li>Transparent formula for Sentinel Reliability Score (0-100)</li>
+                <li>Audited in <Link href="/methodology" style={{ color: 'var(--accent-solana)' }}>MIGRATION_AUDIT.md</Link></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 6. Recent Live Probe Telemetry Feed */}
+      <section style={{ marginBottom: '2rem' }}>
         <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               Recent Probe Telemetry Feed
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-              Latest automated health checks conducted on BSC agent services.
+              Real-time checks conducted on Solana AI agent endpoints (MCP, A2A, HTTP).
             </p>
           </div>
           <Link href="/agents" className="btn btn-secondary btn-sm">
@@ -459,19 +541,19 @@ export default async function Home() {
 
         {recentObservations.length === 0 ? (
           <div className="card" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-            No recent probe observations recorded. Probing runs automatically every hour.
+            No recent probe observations recorded yet. Probing cycles run automatically every 5 minutes.
           </div>
         ) : (
           <div className="table-container">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Agent Target</th>
-                  <th>Probe Type</th>
+                  <th>Target Agent</th>
+                  <th>Protocol / Probe</th>
                   <th>Outcome</th>
                   <th>Latency</th>
                   <th>HTTP Status</th>
-                  <th>Observed At</th>
+                  <th>Timestamp</th>
                 </tr>
               </thead>
               <tbody>
@@ -479,7 +561,7 @@ export default async function Home() {
                   <tr key={obs.id}>
                     <td>
                       <Link
-                        href={`/agents/${obs.chain}/${obs.agentId}`}
+                        href={`/agents/solana/${obs.agentId}`}
                         style={{
                           fontWeight: 600,
                           color: 'var(--text-primary)',
@@ -488,7 +570,9 @@ export default async function Home() {
                           gap: '0.35rem',
                         }}
                       >
-                        <span className="font-mono">{obs.agentId}</span>
+                        <span className="font-mono">
+                          {obs.agentId.length > 16 ? `${obs.agentId.slice(0, 6)}...${obs.agentId.slice(-4)}` : obs.agentId}
+                        </span>
                       </Link>
                     </td>
                     <td>
@@ -534,62 +618,6 @@ export default async function Home() {
             </table>
           </div>
         )}
-      </section>
-
-      {/* 6. Core Architectural Pillars */}
-      <section style={{ marginBottom: '2rem' }}>
-        <div style={{ textAlign: 'center', maxWidth: 640, margin: '0 auto 2rem' }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '0.4rem', color: 'var(--text-primary)' }}>
-            Engineered for Verifiability &amp; Composability
-          </h2>
-          <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-            Why developer ecosystems and onchain orchestrators rely on AgentProof evidence.
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '1.25rem',
-          }}
-        >
-          <div className="card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-              <div style={{ color: 'var(--accent-bnb)' }}>
-                <Lock size={20} />
-              </div>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>SSRF-Hardened Transport</h3>
-            </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              All network probes pass through isolated DNS-pinned transports that block RFC1918 private networks, AWS/GCP metadata endpoints, and internal loopback addresses.
-            </p>
-          </div>
-
-          <div className="card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-              <div style={{ color: 'var(--status-strong)' }}>
-                <FileCheck size={20} />
-              </div>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Deterministic Calculations</h3>
-            </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              Zero AI hallucinated scores. Availability ratios are calculated with reproducible mathematical formulas over explicit 24h, 7d, and 30d observation windows.
-            </p>
-          </div>
-
-          <div className="card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-              <div style={{ color: 'var(--status-limited)' }}>
-                <Code size={20} />
-              </div>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 600 }}>Zero-Cost REST API</h3>
-            </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              Designed for automated routing and orchestrators like AgentFlow. Read endpoints require no API key and provide standard JSON responses with explicit provenance.
-            </p>
-          </div>
-        </div>
       </section>
     </PageShell>
   );

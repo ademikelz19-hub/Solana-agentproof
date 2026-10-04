@@ -2,13 +2,16 @@
   "name": "agentproof",
   "private": true,
   "version": "0.1.0",
-  "description": "Open reliability infrastructure for autonomous onchain agents (ERC-8004 / BSC).",
+  "description": "Reliability intelligence for AI agents on Solana (SAID Protocol).",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspace=@agentproof/web",
+    "start": "npm run start --workspace=@agentproof/web",
+    "build:packages": "npm run build --workspace=@agentproof/core && npm run build --workspace=@agentproof/db && npm run build --workspace=@agentproof/probes && npm run build --workspace=@agentproof/reliability && npm run build --workspace=@agentproof/reputation && npm run build --workspace=@agentproof/sources",
+    "build": "npm run build:packages && npm run build --workspace=@agentproof/web",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
@@ -26,5 +29,10 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@said-protocol/agent": "^0.1.0",
+    "@solana/web3.js": "^1.99.0",
+    "bs58": "^6.0.0"
   }
 }

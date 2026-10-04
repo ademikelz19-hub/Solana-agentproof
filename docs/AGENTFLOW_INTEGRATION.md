@@ -10,8 +10,8 @@ prompt's original instruction.
 
 ## Read flow
 
-1. AgentFlow has an ERC-8004 agent's chain + onchain id (or AgentProof's
-   own `bsc:<id>` form, which AgentFlow can derive: `${chain}:${onchainId}`).
+1. A client consumer has a Solana agent's public key (in AgentProof's
+   own `solana:<pubkey>` form: `${chain}:${onchainId}`).
 2. `GET /api/v1/agents/:chain/:id` — confirm the agent exists in
    AgentProof's index; if `404`, AgentProof has no evidence for this agent
    yet (see Fallback below).

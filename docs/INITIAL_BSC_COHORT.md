@@ -1,6 +1,7 @@
-# Initial BSC Cohort
+# Initial BSC Cohort (Legacy Archive)
 
-Recorded on 2026-08-28. Total discovered BSC agents analyzed: 22
+> [!NOTE]
+> **Legacy Archive**: Recorded on 2026-08-28 during the BNB prototype phase. For current SAID Protocol / Solana agent discovery and monitoring, see [`GRANT_READINESS.md`](../GRANT_READINESS.md) and [`packages/sources/src/said-adapter.ts`](../packages/sources/src/said-adapter.ts).
 
 | Token ID | Name | Owner | Metadata Resolved | Services Discovered | Feedbacks | 
 |---|---|---|---|---|---|

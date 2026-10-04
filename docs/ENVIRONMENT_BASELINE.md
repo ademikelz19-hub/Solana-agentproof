@@ -1,9 +1,9 @@
-# Environment Baseline
+# Environment Baseline (Legacy Archive)
 
-Recorded from the current build sandbox on 2026-08-28. This file must be
-regenerated (or diffed) once work moves to the owner's laptop/network, since
-this sandbox has a restrictive egress allowlist that does **not** represent
-the target deployment environment.
+> [!NOTE]
+> **Legacy Archive**: Recorded from the initial build sandbox on 2026-08-28. For the active Solana / SAID Protocol environment requirements, see [`.env.example`](../.env.example) and [`GRANT_READINESS.md`](../GRANT_READINESS.md).
+
+Recorded from the current build sandbox on 2026-08-28. This file records historical baseline observations.
 
 ## Runtime
 

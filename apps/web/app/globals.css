@@ -1,23 +1,25 @@
 :root {
-  --bg-primary: #060911;
-  --bg-surface-1: #0d121f;
-  --bg-surface-2: #131b2e;
-  --bg-surface-3: #1a243d;
-  --bg-surface-hover: #1f2b48;
+  --bg-primary: #07090e;
+  --bg-surface-1: #0e131f;
+  --bg-surface-2: #141b2c;
+  --bg-surface-3: #1a233a;
+  --bg-surface-hover: #222d4a;
 
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-medium: rgba(255, 255, 255, 0.14);
   --border-strong: rgba(255, 255, 255, 0.22);
-  --border-focus: #f0b90b;
+  --border-focus: #14f195;
 
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
 
-  --accent-bnb: #f0b90b;
-  --accent-bnb-hover: #fcd535;
-  --accent-bnb-subtle: rgba(240, 185, 11, 0.1);
-  --accent-bnb-border: rgba(240, 185, 11, 0.35);
+  --accent-solana: #14f195;
+  --accent-solana-purple: #9945ff;
+  --accent-primary: #10b981;
+  --accent-primary-hover: #059669;
+  --accent-primary-subtle: rgba(20, 241, 149, 0.1);
+  --accent-primary-border: rgba(20, 241, 149, 0.3);
 
   --status-success: #10b981;
   --status-success-bg: rgba(16, 185, 129, 0.1);
@@ -46,8 +48,8 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
-  --shadow-subtle: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.6);
+  --shadow-subtle: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
 }
 
 * {
@@ -88,7 +90,7 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent-bnb);
+  outline: 2px solid var(--accent-solana);
   outline-offset: 2px;
 }
 
@@ -98,25 +100,34 @@ code, pre, .font-mono {
 
 @keyframes pulse-subtle {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.9); }
+  50% { opacity: 0.6; transform: scale(0.96); }
 }
 
 .live-pulse {
   display: inline-block;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
   background-color: var(--status-success);
-  box-shadow: 0 0 10px var(--status-success);
+  border-radius: 50%;
   animation: pulse-subtle 2s infinite ease-in-out;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
 }
 
-/* Card & Surface Classes */
+.live-pulse-solana {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background-color: var(--accent-solana);
+  border-radius: 50%;
+  animation: pulse-subtle 2s infinite ease-in-out;
+  box-shadow: 0 0 8px rgba(20, 241, 149, 0.7);
+}
+
+/* Common UI Components */
 .card {
   background: var(--bg-surface-1);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  padding: 1.25rem;
   box-shadow: var(--shadow-card);
   transition: border-color 0.15s ease, background 0.15s ease;
 }
@@ -125,72 +136,13 @@ code, pre, .font-mono {
   border-color: var(--border-medium);
 }
 
-.card-interactive:hover {
-  border-color: var(--accent-bnb-border);
-  background: var(--bg-surface-2);
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border-radius: 9999px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-
-.table-container {
-  width: 100%;
-  overflow-x: auto;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  background: var(--bg-surface-1);
-}
-
-table.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-  text-align: left;
-}
-
-table.data-table th {
-  padding: 0.75rem 1rem;
-  background: var(--bg-surface-2);
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-table.data-table td {
-  padding: 0.85rem 1rem;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-}
-
-table.data-table tr:last-child td {
-  border-bottom: none;
-}
-
-table.data-table tr:hover td {
-  background: var(--bg-surface-2);
-}
-
-/* Button Classes */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.6rem 1.1rem;
-  border-radius: 6px;
+  padding: 0.6rem 1.15rem;
+  border-radius: 7px;
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
@@ -199,46 +151,72 @@ table.data-table tr:hover td {
 }
 
 .btn-primary {
-  background: var(--accent-bnb);
-  color: #000;
+  background: #14f195;
+  color: #050811;
 }
 
 .btn-primary:hover {
-  background: var(--accent-bnb-hover);
-  box-shadow: 0 0 16px rgba(240, 185, 11, 0.35);
+  background: #10d783;
+  box-shadow: 0 0 16px rgba(20, 241, 149, 0.35);
 }
 
 .btn-secondary {
   background: var(--bg-surface-2);
-  border: 1px solid var(--border-medium);
   color: var(--text-primary);
+  border: 1px solid var(--border-medium);
 }
 
 .btn-secondary:hover {
-  background: var(--bg-surface-3);
+  background: var(--bg-surface-hover);
   border-color: var(--border-strong);
 }
 
-.btn-sm {
-  padding: 0.35rem 0.7rem;
-  font-size: 0.75rem;
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.725rem;
+  font-weight: 600;
 }
 
-/* Responsive Visibility Helpers */
-@media (max-width: 767px) {
-  .desktop-only {
-    display: none !important;
-  }
-  .mobile-only {
-    display: flex !important;
-  }
+/* Data Table Styling */
+.table-container {
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-surface-1);
 }
 
-@media (min-width: 768px) {
-  .mobile-only {
-    display: none !important;
-  }
-  .desktop-only {
-    display: block !important;
-  }
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.data-table th {
+  background: var(--bg-surface-2);
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+.data-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tr:hover td {
+  background: var(--bg-surface-hover);
 }

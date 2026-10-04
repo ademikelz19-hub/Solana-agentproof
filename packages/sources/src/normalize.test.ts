@@ -1,62 +1,59 @@
 import { describe, expect, it } from 'vitest';
-import { parseExternal, rawAgentMetadataSchema, type Provenance } from '@agentproof/core';
-import { normalizeAgentServices } from './normalize';
-import {
-  SYNTHETIC_8004SCAN_RESPONSE_WITH_BOTH,
-  SYNTHETIC_8004SCAN_RESPONSE_WITH_LEGACY_ENDPOINTS,
-  SYNTHETIC_8004SCAN_RESPONSE_WITH_SERVICES,
-  SYNTHETIC_MALFORMED_RESPONSE,
-} from './__fixtures__/synthetic-8004scan-response.fixture';
+import type { Provenance, RawSaidAgent } from '@agentproof/core';
+import { normalizeSaidServices } from './normalize';
 
 const provenance: Provenance = {
-  source: 'INDEXER',
-  origin: 'synthetic-test-fixture',
+  source: 'SAID_PROTOCOL',
+  origin: 'test-fixture',
   observedAt: new Date().toISOString(),
 };
 
-describe('normalizeAgentServices — services/endpoints compatibility', () => {
-  it('normalizes the current "services" form', () => {
-    const parsed = parseExternal(rawAgentMetadataSchema, SYNTHETIC_8004SCAN_RESPONSE_WITH_SERVICES);
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    const services = normalizeAgentServices('bsc:1', 'bsc', parsed.data, provenance);
+const TEST_AGENT_ID = 'solana:5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G';
+
+describe('normalizeSaidServices', () => {
+  it('normalizes MCP and A2A endpoints from SAID agent record', () => {
+    const raw: RawSaidAgent = {
+      wallet: '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G',
+      name: 'Sentinel Prober',
+      mcpEndpoint: 'https://agent.example.com/mcp',
+      a2aEndpoint: 'https://agent.example.com/a2a',
+    };
+
+    const services = normalizeSaidServices(TEST_AGENT_ID, 'solana', raw, provenance);
     expect(services).toHaveLength(2);
-    expect(services[0]?.declarationForm).toBe('SERVICES');
-    expect(services[0]?.protocol).toBe('HTTP');
-    expect(services[1]?.protocol).toBe('A2A');
+
+    const mcp = services.find((s) => s.endpointType === 'MCP');
+    expect(mcp).toBeDefined();
+    expect(mcp?.url).toBe('https://agent.example.com/mcp');
+    expect(mcp?.protocol).toBe('MCP');
+
+    const a2a = services.find((s) => s.endpointType === 'A2A');
+    expect(a2a).toBeDefined();
+    expect(a2a?.url).toBe('https://agent.example.com/a2a');
+    expect(a2a?.protocol).toBe('A2A');
   });
 
-  it('normalizes the legacy "endpoints" form', () => {
-    const parsed = parseExternal(rawAgentMetadataSchema, SYNTHETIC_8004SCAN_RESPONSE_WITH_LEGACY_ENDPOINTS);
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    const services = normalizeAgentServices('bsc:2', 'bsc', parsed.data, provenance);
-    expect(services).toHaveLength(1);
-    expect(services[0]?.declarationForm).toBe('ENDPOINTS');
-    expect(services[0]?.url).toBe('https://legacy-agent.test/api');
+  it('normalizes website and dictionary endpoints', () => {
+    const raw: RawSaidAgent = {
+      wallet: '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G',
+      website: 'https://sentinel.agent',
+      endpoints: {
+        chat: 'https://sentinel.agent/chat',
+      },
+    };
+
+    const services = normalizeSaidServices(TEST_AGENT_ID, 'solana', raw, provenance);
+    expect(services.length).toBeGreaterThanOrEqual(2);
+    expect(services.some((s) => s.endpointType === 'HTTP')).toBe(true);
   });
 
-  it('prefers "services" over "endpoints" when an agent declares both', () => {
-    const parsed = parseExternal(rawAgentMetadataSchema, SYNTHETIC_8004SCAN_RESPONSE_WITH_BOTH);
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    const services = normalizeAgentServices('bsc:3', 'bsc', parsed.data, provenance);
-    expect(services).toHaveLength(1);
-    expect(services[0]?.url).toBe('https://preferred.test/api');
-  });
+  it('handles empty endpoints gracefully without throwing or creating dummy entries', () => {
+    const raw: RawSaidAgent = {
+      wallet: '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G',
+      name: 'Endpointless Agent',
+    };
 
-  it('rejects malformed metadata at the validation boundary before normalization ever runs', () => {
-    const parsed = parseExternal(rawAgentMetadataSchema, SYNTHETIC_MALFORMED_RESPONSE);
-    expect(parsed.ok).toBe(false);
-  });
-
-  it('never invents a URL for an endpoint entry missing both url and endpoint fields', () => {
-    const parsed = parseExternal(rawAgentMetadataSchema, {
-      endpoints: [{ id: 'no-url-here', type: 'HTTP' }],
-    });
-    expect(parsed.ok).toBe(true);
-    if (!parsed.ok) return;
-    const services = normalizeAgentServices('bsc:4', 'bsc', parsed.data, provenance);
+    const services = normalizeSaidServices(TEST_AGENT_ID, 'solana', raw, provenance);
     expect(services).toHaveLength(0);
   });
 });

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Shield, Activity, Code, BookOpen, Menu, X } from 'lucide-react';
+import { ShieldCheck, Activity, Code, BookOpen, Award, Menu, X } from 'lucide-react';
 import { GithubIcon } from './Icons';
 
 export function Navbar() {
@@ -12,6 +12,7 @@ export function Navbar() {
 
   const navLinks = [
     { href: '/agents', label: 'Explore Agents', icon: Activity },
+    { href: '/grant-demo', label: 'Grant Demo', icon: Award },
     { href: '/methodology', label: 'Methodology', icon: BookOpen },
     { href: '/developers', label: 'Developers & API', icon: Code },
   ];
@@ -20,7 +21,7 @@ export function Navbar() {
     <header
       style={{
         borderBottom: '1px solid var(--border-subtle)',
-        background: 'rgba(6, 9, 17, 0.85)',
+        background: 'rgba(7, 9, 14, 0.88)',
         backdropFilter: 'blur(12px)',
         position: 'sticky',
         top: 0,
@@ -44,7 +45,7 @@ export function Navbar() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '0.6rem',
+              gap: '0.65rem',
               fontWeight: 800,
               fontSize: '1.15rem',
               letterSpacing: '-0.02em',
@@ -56,17 +57,22 @@ export function Navbar() {
                 width: 32,
                 height: 32,
                 borderRadius: 8,
-                background: 'linear-gradient(135deg, #f0b90b 0%, #d97706 100%)',
+                background: 'linear-gradient(135deg, #14f195 0%, #06b6d4 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#000',
-                boxShadow: '0 0 14px rgba(240, 185, 11, 0.35)',
+                color: '#050811',
+                boxShadow: '0 0 16px rgba(20, 241, 149, 0.35)',
               }}
             >
-              <Shield size={18} strokeWidth={2.5} />
+              <ShieldCheck size={20} strokeWidth={2.5} />
             </div>
-            <span>AgentProof</span>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ lineHeight: 1.1 }}>AgentProof <span style={{ color: '#14f195' }}>Sentinel</span></span>
+              <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontWeight: 500, letterSpacing: '0.04em' }}>
+                FOR SAID PROTOCOL
+              </span>
+            </div>
           </Link>
 
           <div
@@ -83,9 +89,9 @@ export function Navbar() {
             }}
             className="network-tag"
           >
-            <span className="live-pulse" />
-            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>BNB Chain</span>
-            <span style={{ color: 'var(--text-muted)' }}>• Live Probing</span>
+            <span className="live-pulse-solana" />
+            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Solana Mainnet</span>
+            <span style={{ color: 'var(--text-muted)' }}>• Active Probing</span>
           </div>
         </div>
 
@@ -99,7 +105,7 @@ export function Navbar() {
           className="desktop-nav"
         >
           {navLinks.map((link) => {
-            const isActive = pathname.startsWith(link.href);
+            const isActive = pathname === link.href || (link.href !== '/' && pathname.startsWith(link.href));
             const Icon = link.icon;
             return (
               <Link
@@ -119,7 +125,7 @@ export function Navbar() {
                   transition: 'all 0.15s ease',
                 }}
               >
-                <Icon size={14} color={isActive ? 'var(--accent-bnb)' : 'var(--text-muted)'} />
+                <Icon size={14} color={isActive ? 'var(--accent-solana)' : 'var(--text-muted)'} />
                 <span>{link.label}</span>
               </Link>
             );
@@ -197,8 +203,8 @@ export function Navbar() {
               marginBottom: '0.5rem',
             }}
           >
-            <span className="live-pulse" />
-            <span>BNB Chain Mainnet (56) • Active Probing</span>
+            <span className="live-pulse-solana" />
+            <span>Solana Mainnet (SAID Protocol) • Active Probing</span>
           </div>
 
           {navLinks.map((link) => {
@@ -221,31 +227,11 @@ export function Navbar() {
                   background: isActive ? 'var(--bg-surface-2)' : 'transparent',
                 }}
               >
-                <Icon size={16} color={isActive ? 'var(--accent-bnb)' : 'var(--text-muted)'} />
+                <Icon size={16} color={isActive ? 'var(--accent-solana)' : 'var(--text-muted)'} />
                 <span>{link.label}</span>
               </Link>
             );
           })}
-
-          <a
-            href="https://github.com/ademikelz19-hub/agentproof"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.6rem',
-              padding: '0.75rem',
-              borderRadius: 6,
-              fontSize: '0.95rem',
-              color: 'var(--text-secondary)',
-              marginTop: '0.5rem',
-              borderTop: '1px solid var(--border-subtle)',
-            }}
-          >
-            <GithubIcon size={16} />
-            <span>Source Code on GitHub</span>
-          </a>
         </div>
       )}
 

@@ -1,6 +1,10 @@
-# On-Chain ERC-8004 Verification Report
+# On-Chain ERC-8004 Verification Report (Legacy Archive)
 
-This document reports the verification results comparing indexer data from 8004scan against on-chain smart contract facts on the BNB Smart Chain (BSC).
+> [!NOTE]
+> **Legacy Archive**: This report records historical verification on BNB Smart Chain prior to migrating to Solana Mainnet & SAID Protocol.
+> For the current Solana on-chain and SAID verification architecture, refer to [`GRANT_READINESS.md`](../GRANT_READINESS.md) and [`MIGRATION_AUDIT.md`](../MIGRATION_AUDIT.md).
+
+This document reports historical verification results comparing indexer data from 8004scan against on-chain smart contract facts on the BNB Smart Chain (BSC).
 
 ## Verification Methodology
 

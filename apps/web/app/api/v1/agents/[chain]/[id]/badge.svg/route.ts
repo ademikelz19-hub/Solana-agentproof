@@ -10,7 +10,7 @@ export async function GET(
 ) {
   const parsed = parseAgentParams(await params);
   if (!parsed.ok) {
-    return new Response(generateBadgeSvg('AgentProof', 'invalid id', '#e11d48'), {
+    return new Response(generateBadgeSvg('Sentinel', 'invalid id', '#e11d48'), {
       headers: {
         'Content-Type': 'image/svg+xml; charset=utf-8',
         'Cache-Control': 'no-cache',
@@ -19,9 +19,9 @@ export async function GET(
     });
   }
 
-  const agent = await agentRepository.getAgent(parsed.value.chain, parsed.value.id);
+  const agent = await agentRepository.getAgent(parsed.value.id);
   if (!agent) {
-    return new Response(generateBadgeSvg('AgentProof', 'agent not found', '#64748b'), {
+    return new Response(generateBadgeSvg('Sentinel', 'agent not found', '#64748b'), {
       headers: {
         'Content-Type': 'image/svg+xml; charset=utf-8',
         'Cache-Control': 'no-cache',
@@ -59,7 +59,7 @@ export async function GET(
     }
   }
 
-  const svg = generateBadgeSvg('AgentProof', valueText, color);
+  const svg = generateBadgeSvg('Sentinel', valueText, color);
 
   return new Response(svg, {
     headers: {
@@ -89,13 +89,13 @@ function generateBadgeSvg(label: string, value: string, color: string): string {
     <rect width="${totalWidth}" height="${height}" rx="3" fill="#fff"/>
   </clipPath>
   <g clip-path="url(#a)">
-    <rect width="${labelWidth}" height="${height}" fill="#181b26"/>
+    <rect width="${labelWidth}" height="${height}" fill="#0f172a"/>
     <rect x="${labelWidth}" width="${valueWidth}" height="${height}" fill="${color}"/>
     <rect width="${totalWidth}" height="${height}" fill="url(#b)"/>
   </g>
-  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110">
+  <g fill="#fff" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" text-rendering="geometricPrecision" font-size="110">
     <text aria-hidden="true" x="${labelX * 10}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)">${label}</text>
-    <text x="${labelX * 10}" y="140" fill="#f0b90b" font-weight="bold" transform="scale(.1)">${label}</text>
+    <text x="${labelX * 10}" y="140" fill="#10b981" font-weight="bold" transform="scale(.1)">${label}</text>
     <text aria-hidden="true" x="${valueX * 10}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)">${value}</text>
     <text x="${valueX * 10}" y="140" transform="scale(.1)">${value}</text>
   </g>

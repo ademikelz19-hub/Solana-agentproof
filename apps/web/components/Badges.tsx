@@ -12,7 +12,189 @@ import {
   Lock,
   Activity,
   FileCheck2,
+  Award,
 } from 'lucide-react';
+import type { SaidVerificationStatus } from '@agentproof/core';
+
+export function SaidVerificationBadge({ status }: { status?: SaidVerificationStatus | string }) {
+  if (status === 'VERIFIED') {
+    return (
+      <span
+        className="badge font-mono"
+        style={{
+          background: 'rgba(20, 241, 149, 0.12)',
+          color: '#14f195',
+          border: '1px solid rgba(20, 241, 149, 0.35)',
+          fontSize: '0.72rem',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.35rem',
+        }}
+        title="Official SAID Protocol verified agent on Solana Mainnet"
+      >
+        <ShieldCheck size={12} />
+        <span>SAID VERIFIED</span>
+      </span>
+    );
+  }
+
+  if (status === 'PENDING') {
+    return (
+      <span
+        className="badge font-mono"
+        style={{
+          background: 'rgba(251, 191, 36, 0.12)',
+          color: '#fbbf24',
+          border: '1px solid rgba(251, 191, 36, 0.35)',
+          fontSize: '0.72rem',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.35rem',
+        }}
+        title="SAID Protocol verification in review"
+      >
+        <Clock size={12} />
+        <span>VERIFICATION PENDING</span>
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="badge font-mono"
+      style={{
+        background: 'var(--bg-surface-2)',
+        color: 'var(--text-muted)',
+        border: '1px solid var(--border-subtle)',
+        fontSize: '0.72rem',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.35rem',
+      }}
+      title="Unverified on SAID Protocol"
+    >
+      <HelpCircle size={12} />
+      <span>SAID UNVERIFIED</span>
+    </span>
+  );
+}
+
+export function TrustTierBadge({ tier }: { tier?: string | null }) {
+  if (!tier || tier === 'UNRATED' || tier === 'UNKNOWN') {
+    return (
+      <span
+        className="badge font-mono"
+        style={{
+          background: 'var(--bg-surface-2)',
+          color: 'var(--text-muted)',
+          border: '1px solid var(--border-subtle)',
+          fontSize: '0.7rem',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.3rem',
+        }}
+      >
+        <Award size={10} />
+        <span>UNRATED TIER</span>
+      </span>
+    );
+  }
+
+  const isTier1 = tier.toUpperCase().includes('1');
+  const isTier2 = tier.toUpperCase().includes('2');
+
+  return (
+    <span
+      className="badge font-mono"
+      style={{
+        background: isTier1
+          ? 'rgba(0, 240, 255, 0.12)'
+          : isTier2
+          ? 'rgba(129, 140, 248, 0.12)'
+          : 'rgba(100, 116, 139, 0.15)',
+        color: isTier1 ? '#00f0ff' : isTier2 ? '#818cf8' : '#94a3b8',
+        border: `1px solid ${isTier1 ? 'rgba(0, 240, 255, 0.35)' : isTier2 ? 'rgba(129, 140, 248, 0.35)' : 'rgba(100, 116, 139, 0.3)'}`,
+        fontSize: '0.7rem',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.3rem',
+      }}
+      title={`SAID Protocol Trust Tier: ${tier}`}
+    >
+      <Award size={10} />
+      <span>{tier.replace('_', ' ')}</span>
+    </span>
+  );
+}
+
+export function SentinelScoreBadge({ score, state }: { score?: number | null; state?: string }) {
+  if (state === 'INSUFFICIENT_DATA' || score === null || score === undefined) {
+    return (
+      <span
+        className="badge font-mono"
+        style={{
+          background: 'var(--bg-surface-2)',
+          color: 'var(--text-muted)',
+          border: '1px solid var(--border-subtle)',
+          fontSize: '0.72rem',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.35rem',
+        }}
+        title="Insufficient observation history to calculate Sentinel Reliability Score"
+      >
+        <span>SENTINEL: INSUFFICIENT DATA</span>
+      </span>
+    );
+  }
+
+  const color =
+    score >= 90
+      ? 'var(--status-success)'
+      : score >= 75
+      ? '#00f0ff'
+      : score >= 50
+      ? 'var(--status-warning)'
+      : 'var(--status-failure)';
+
+  const bg =
+    score >= 90
+      ? 'var(--status-success-bg)'
+      : score >= 75
+      ? 'rgba(0, 240, 255, 0.1)'
+      : score >= 50
+      ? 'var(--status-warning-bg)'
+      : 'var(--status-failure-bg)';
+
+  const border =
+    score >= 90
+      ? 'var(--status-success-border)'
+      : score >= 75
+      ? 'rgba(0, 240, 255, 0.3)'
+      : score >= 50
+      ? 'var(--status-warning-border)'
+      : 'var(--status-failure-border)';
+
+  return (
+    <span
+      className="badge font-mono"
+      style={{
+        background: bg,
+        color,
+        border: `1px solid ${border}`,
+        fontSize: '0.72rem',
+        fontWeight: 700,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.35rem',
+      }}
+      title="Operational reliability measured by AgentProof Sentinel (0-100)"
+    >
+      <Activity size={11} />
+      <span>SENTINEL SCORE: {score}/100</span>
+    </span>
+  );
+}
 
 export function SufficiencyBadge({ tier }: { tier: string }) {
   let bg = 'rgba(100, 116, 139, 0.15)';
@@ -75,7 +257,7 @@ export function OutcomeBadge({ outcome }: { outcome: string }) {
     color = 'var(--status-success)';
     border = 'var(--status-success-border)';
     icon = <CheckCircle2 size={11} />;
-    label = 'SUCCESS (ONLINE)';
+    label = 'ONLINE / REACHABLE';
   } else if (outcome === 'FAILURE' || outcome === 'AGENT_UNREACHABLE' || outcome === 'DNS_FAILURE') {
     bg = 'var(--status-failure-bg)';
     color = 'var(--status-failure)';
@@ -105,7 +287,7 @@ export function OutcomeBadge({ outcome }: { outcome: string }) {
     color = '#64748b';
     border = '1px dashed rgba(100, 116, 139, 0.4)';
     icon = <AlertTriangle size={11} />;
-    label = 'RUNNER EXCLUDED';
+    label = 'PROBE ERROR';
   } else if (outcome === 'NOT_INGESTED') {
     bg = 'rgba(100, 116, 139, 0.1)';
     color = '#64748b';
@@ -140,25 +322,20 @@ export function ProvenanceBadge({ source, origin }: { source: string; origin?: s
   let label = source;
 
   if (source === 'AGENTPROOF_MEASUREMENT') {
-    bg = 'rgba(240, 185, 11, 0.12)';
-    color = 'var(--accent-bnb)';
-    border = 'var(--accent-bnb-border)';
-    label = 'AGENTPROOF MEASUREMENT';
+    bg = 'rgba(20, 241, 149, 0.12)';
+    color = 'var(--accent-solana)';
+    border = 'var(--accent-solana-border)';
+    label = 'SENTINEL TELEMETRY';
   } else if (source === 'ONCHAIN') {
-    bg = 'rgba(56, 189, 248, 0.1)';
-    color = '#38bdf8';
-    border = 'rgba(56, 189, 248, 0.25)';
-    label = 'ONCHAIN RECORD';
-  } else if (source === 'INDEXER') {
+    bg = 'rgba(0, 240, 255, 0.1)';
+    color = '#00f0ff';
+    border = 'rgba(0, 240, 255, 0.25)';
+    label = 'SOLANA MAINNET';
+  } else if (source === 'SAID_PROTOCOL') {
     bg = 'rgba(129, 140, 248, 0.1)';
     color = '#818cf8';
     border = 'rgba(129, 140, 248, 0.25)';
-    label = `INDEXER (${origin ?? '8004scan'})`;
-  } else if (source === 'ERC8004_METADATA') {
-    bg = 'rgba(148, 163, 184, 0.1)';
-    color = '#94a3b8';
-    border = 'rgba(148, 163, 184, 0.25)';
-    label = 'ERC-8004 METADATA';
+    label = `SAID PROTOCOL (${origin ?? '5dpw6K...'})`;
   }
 
   return (
@@ -183,13 +360,20 @@ export function ProvenanceBadge({ source, origin }: { source: string; origin?: s
 }
 
 export function ProtocolBadge({ protocol }: { protocol: string }) {
+  const isMcp = protocol.toUpperCase() === 'MCP';
+  const isA2a = protocol.toUpperCase() === 'A2A';
+
   return (
     <span
       className="badge font-mono"
       style={{
-        background: 'var(--bg-surface-3)',
-        color: 'var(--text-primary)',
-        border: '1px solid var(--border-medium)',
+        background: isMcp
+          ? 'rgba(0, 240, 255, 0.1)'
+          : isA2a
+          ? 'rgba(20, 241, 149, 0.1)'
+          : 'var(--bg-surface-3)',
+        color: isMcp ? '#00f0ff' : isA2a ? '#14f195' : 'var(--text-primary)',
+        border: `1px solid ${isMcp ? 'rgba(0, 240, 255, 0.3)' : isA2a ? 'rgba(20, 241, 149, 0.3)' : 'var(--border-medium)'}`,
         fontSize: '0.7rem',
         display: 'inline-flex',
         alignItems: 'center',
@@ -216,7 +400,7 @@ export function MonitoringStatusBadge({ isMonitored }: { isMonitored: boolean })
           alignItems: 'center',
           gap: '0.35rem',
         }}
-        title="Included in AgentProof scheduled automated probe monitoring cycles."
+        title="Included in Sentinel automated probing cycles."
       >
         <span className="live-pulse" style={{ width: 6, height: 6 }} />
         <span>ACTIVELY MONITORED</span>
@@ -236,10 +420,10 @@ export function MonitoringStatusBadge({ isMonitored }: { isMonitored: boolean })
         alignItems: 'center',
         gap: '0.35rem',
       }}
-      title="Indexed from registry, currently in standby cohort."
+      title="Discovered from SAID registry, pending active monitor schedule."
     >
       <Activity size={10} />
-      <span>INDEXED (STANDBY)</span>
+      <span>DISCOVERED (STANDBY)</span>
     </span>
   );
 }
@@ -250,18 +434,18 @@ export function MetadataStatusBadge({ resolved }: { resolved: boolean }) {
       <span
         className="badge font-mono"
         style={{
-          background: 'rgba(56, 189, 248, 0.1)',
-          color: '#38bdf8',
-          border: '1px solid rgba(56, 189, 248, 0.25)',
+          background: 'rgba(20, 241, 149, 0.1)',
+          color: '#14f195',
+          border: '1px solid rgba(20, 241, 149, 0.25)',
           fontSize: '0.68rem',
           display: 'inline-flex',
           alignItems: 'center',
           gap: '0.3rem',
         }}
-        title="Metadata structure successfully resolved from offchain URI."
+        title="Agent services and identity metadata resolved from SAID Protocol."
       >
         <FileCheck2 size={10} />
-        <span>METADATA RESOLVED</span>
+        <span>SAID SYNCED</span>
       </span>
     );
   }
@@ -278,10 +462,10 @@ export function MetadataStatusBadge({ resolved }: { resolved: boolean }) {
         alignItems: 'center',
         gap: '0.3rem',
       }}
-      title="Metadata offchain resolution pending or not provided."
+      title="Identity synchronization pending."
     >
       <Clock size={10} />
-      <span>METADATA PENDING</span>
+      <span>SYNC PENDING</span>
     </span>
   );
 }

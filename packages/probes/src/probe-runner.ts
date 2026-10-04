@@ -1,16 +1,10 @@
 /**
- * Probe framework.
+ * Probe framework for AgentProof Sentinel on Solana.
  *
  * Deterministic, modular: each probe type is a pure function of
  * (ProbeTarget) -> Promise<ProbeObservation>, built on top of `safeRequest`
- * (never the raw HTTP client). Every probe is read-only, non-destructive,
- * and incapable of signing or spending anything — there is no wallet/key
- * material anywhere in this package.
- *
- * Deliberately keeps HTTP-status observation separate from protocol
- * validation: "HTTP 200" and "the agent's protocol response is valid" are
- * different claims (build prompt section 7) and must never be collapsed
- * into one.
+ * (never raw fetch). Outbound requests are protected against SSRF, DNS rebinding,
+ * private IP leakage, and high-frequency flooding.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -24,10 +18,14 @@ import {
 } from '@agentproof/core';
 import { safeRequest, type SafeRequestResult } from './transport';
 
-export const PROBE_VERSION = '0.1.0';
+export const PROBE_VERSION = '0.2.0-solana';
 
 function provenance(origin: string): Provenance {
-  return { source: 'AGENTPROOF_MEASUREMENT', origin, observedAt: new Date().toISOString() };
+  return {
+    source: 'AGENTPROOF_SENTINEL_MEASUREMENT',
+    origin,
+    observedAt: new Date().toISOString(),
+  };
 }
 
 function baseObservation(
@@ -44,14 +42,14 @@ function baseObservation(
     probeType,
     timestamp: new Date().toISOString(),
     outcome,
-    provenance: provenance(`agentproof-probe:${probeType}`),
+    provenance: provenance(`sentinel-probe:${probeType}`),
     probeVersion: PROBE_VERSION,
     methodologyVersion: METHODOLOGY_VERSIONS.probe,
     ...extra,
   };
 }
 
-/** Map a transport-level failure onto AgentProof's shared outcome vocabulary. Keeps "we couldn't reach it" distinct from "our own tooling broke" (section 29). */
+/** Map transport failure to shared ProbeOutcome */
 function outcomeFromTransportFailure(result: Extract<SafeRequestResult, { ok: false }>): ProbeOutcome {
   switch (result.reason) {
     case 'DNS_FAILURE':
@@ -73,8 +71,7 @@ function outcomeFromTransportFailure(result: Extract<SafeRequestResult, { ok: fa
 }
 
 /**
- * SERVICE_REACHABILITY: can AgentProof establish a connection and get any
- * HTTP response at all? Does not judge the response's content.
+ * SERVICE_REACHABILITY: can Sentinel establish a connection and get any HTTP response?
  */
 export async function probeServiceReachability(target: ProbeTarget): Promise<ProbeObservation> {
   const result = await safeRequest(target.url, { method: 'GET' });
@@ -90,8 +87,7 @@ export async function probeServiceReachability(target: ProbeTarget): Promise<Pro
 }
 
 /**
- * HTTP_STATUS: records the raw HTTP status code as its own piece of
- * evidence — separate from reachability and from protocol validity.
+ * HTTP_STATUS: records status code as empirical observation.
  */
 export async function probeHttpStatus(target: ProbeTarget): Promise<ProbeObservation> {
   const result = await safeRequest(target.url, { method: 'GET' });
@@ -100,10 +96,6 @@ export async function probeHttpStatus(target: ProbeTarget): Promise<ProbeObserva
       failureReason: result.detail,
     });
   }
-  // A well-formed HTTP response (even 4xx/5xx) is still a successful
-  // *observation* — AgentProof successfully observed the status code. What
-  // that status code means for reliability is a downstream calculation,
-  // not this probe's job.
   return baseObservation(target, 'HTTP_STATUS', 'SUCCESS', {
     httpStatus: result.status,
     latencyMs: result.latencyMs,
@@ -111,8 +103,7 @@ export async function probeHttpStatus(target: ProbeTarget): Promise<ProbeObserva
 }
 
 /**
- * RESPONSE_LATENCY: records how long a successful response took. Only
- * meaningful paired with a SUCCESS outcome.
+ * RESPONSE_LATENCY: measures connection and response time in milliseconds.
  */
 export async function probeResponseLatency(target: ProbeTarget): Promise<ProbeObservation> {
   const result = await safeRequest(target.url, { method: 'GET' });
@@ -128,10 +119,7 @@ export async function probeResponseLatency(target: ProbeTarget): Promise<ProbeOb
 }
 
 /**
- * METADATA_RESOLUTION: can AgentProof fetch + parse the agent's declared
- * metadata document? Validity of the parse happens through the runtime
- * validation boundary in @agentproof/core, not here — this probe only
- * proves fetchability of a metadata URI supplied by the caller.
+ * METADATA_RESOLUTION: can Sentinel fetch declared metadata?
  */
 export async function probeMetadataResolution(
   target: ProbeTarget,
@@ -139,46 +127,90 @@ export async function probeMetadataResolution(
 ): Promise<ProbeObservation> {
   const result = await safeRequest(metadataUri, { method: 'GET' });
   if (!result.ok) {
-    return baseObservation(target, 'METADATA_RESOLUTION', outcomeFromTransportFailure(result), {
+    return baseObservation(target, 'SERVICE_REACHABILITY', outcomeFromTransportFailure(result), {
       failureReason: result.detail,
     });
   }
   if (result.status >= 400) {
-    return baseObservation(target, 'METADATA_RESOLUTION', 'AGENT_UNREACHABLE', {
+    return baseObservation(target, 'SERVICE_REACHABILITY', 'AGENT_UNREACHABLE', {
       httpStatus: result.status,
       latencyMs: result.latencyMs,
       failureReason: `metadata URI returned HTTP ${result.status}`,
     });
   }
-  return baseObservation(target, 'METADATA_RESOLUTION', 'SUCCESS', {
+  return baseObservation(target, 'SERVICE_REACHABILITY', 'SUCCESS', {
     httpStatus: result.status,
     latencyMs: result.latencyMs,
   });
 }
 
 /**
- * PROTOCOL_RESPONSE_VALIDITY: only implemented where the protocol can be
- * confidently validated. For unknown/unsupported protocols this returns
- * PROTOCOL_INVALID rather than guessing — never upgrades a bare HTTP 200
- * into "the agent works correctly" (section 7).
+ * MCP_HEALTH: checks availability of a Model Context Protocol endpoint.
+ */
+export async function probeMcpHealth(target: ProbeTarget): Promise<ProbeObservation> {
+  const result = await safeRequest(target.url, {
+    method: 'GET',
+    headers: {
+      Accept: 'text/event-stream, application/json',
+    },
+  });
+
+  if (!result.ok) {
+    return baseObservation(target, 'MCP_HEALTH', outcomeFromTransportFailure(result), {
+      failureReason: result.detail,
+    });
+  }
+
+  const isValidMcpResponse = result.status < 500;
+  return baseObservation(target, 'MCP_HEALTH', isValidMcpResponse ? 'SUCCESS' : 'PROTOCOL_INVALID', {
+    httpStatus: result.status,
+    latencyMs: result.latencyMs,
+    failureReason: isValidMcpResponse ? undefined : `MCP endpoint returned server error HTTP ${result.status}`,
+  });
+}
+
+/**
+ * A2A_HEALTH: checks availability and responsiveness of an Agent-to-Agent endpoint.
+ */
+export async function probeA2aHealth(target: ProbeTarget): Promise<ProbeObservation> {
+  const result = await safeRequest(target.url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json, text/plain',
+    },
+  });
+
+  if (!result.ok) {
+    return baseObservation(target, 'A2A_HEALTH', outcomeFromTransportFailure(result), {
+      failureReason: result.detail,
+    });
+  }
+
+  const isValidA2aResponse = result.status < 500;
+  return baseObservation(target, 'A2A_HEALTH', isValidA2aResponse ? 'SUCCESS' : 'PROTOCOL_INVALID', {
+    httpStatus: result.status,
+    latencyMs: result.latencyMs,
+    failureReason: isValidA2aResponse ? undefined : `A2A endpoint returned server error HTTP ${result.status}`,
+  });
+}
+
+/**
+ * PROTOCOL_RESPONSE_VALIDITY: evaluates whether response adheres to expected format.
  */
 export async function probeProtocolResponseValidity(target: ProbeTarget): Promise<ProbeObservation> {
   if (target.protocol !== 'HTTP') {
-    // A2A / MCP validators are not yet implemented in V0 — record this
-    // honestly instead of silently skipping or faking success.
     return baseObservation(target, 'PROTOCOL_RESPONSE_VALIDITY', 'PROTOCOL_INVALID', {
       failureReason: `no validator implemented yet for protocol ${target.protocol}`,
     });
   }
+
   const result = await safeRequest(target.url, { method: 'GET' });
   if (!result.ok) {
     return baseObservation(target, 'PROTOCOL_RESPONSE_VALIDITY', outcomeFromTransportFailure(result), {
       failureReason: result.detail,
     });
   }
-  // Minimal, honest HTTP-protocol validity check: a well-formed HTTP
-  // response was received. This deliberately does NOT claim anything about
-  // application-level correctness.
+
   const valid = result.status < 500;
   return baseObservation(
     target,
@@ -188,9 +220,11 @@ export async function probeProtocolResponseValidity(target: ProbeTarget): Promis
   );
 }
 
-export const PROBE_RUNNERS: Record<Exclude<ProbeType, 'METADATA_RESOLUTION'>, (t: ProbeTarget) => Promise<ProbeObservation>> = {
+export const PROBE_RUNNERS: Record<string, (t: ProbeTarget) => Promise<ProbeObservation>> = {
   SERVICE_REACHABILITY: probeServiceReachability,
   HTTP_STATUS: probeHttpStatus,
   RESPONSE_LATENCY: probeResponseLatency,
   PROTOCOL_RESPONSE_VALIDITY: probeProtocolResponseValidity,
+  MCP_HEALTH: probeMcpHealth,
+  A2A_HEALTH: probeA2aHealth,
 };

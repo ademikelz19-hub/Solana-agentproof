@@ -2,9 +2,11 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata = {
-  title: 'AgentProof — Reliability & Reputation Infrastructure for Onchain Agents',
-  description: 'Continuous, independent reachability, latency, and reputation integrity evidence for autonomous agents on BNB Chain.',
-  keywords: 'AgentProof, BNB Chain, ERC-8004, AI Agents, Autonomous Agents, Web3 Reliability, Smart Contracts, Decentralized AI',
+  title: 'AgentProof Sentinel — Reliability Intelligence for AI Agents on Solana',
+  description:
+    'Identity tells you who an agent is. Sentinel shows whether it is actually delivering. Autonomous operational reliability layer for SAID Protocol AI agents on Solana.',
+  keywords:
+    'AgentProof Sentinel, SAID Protocol, Solana, AI Agents, Autonomous Agents, Solana AI, Reliability Intelligence, MCP, A2A, Uptime',
   icons: {
     icon: '/favicon.ico',
   },

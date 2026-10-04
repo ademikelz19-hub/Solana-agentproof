@@ -1,18 +1,11 @@
 /**
- * Repository abstractions (build prompt Phase D, section 4).
+ * Repository abstractions for AgentProof Sentinel.
  *
- * Reliability and reputation-integrity calculations depend ONLY on these
- * interfaces, never on Drizzle or any specific database client directly.
- * This is what makes the calculation engines unit-testable with in-memory
- * fakes (see packages/reliability and packages/reputation tests) and keeps
- * the door open to swapping the underlying store later without touching
- * calculation logic.
- *
- * Deliberately NOT one interface per table — `ObservationRepository` covers
- * both reads and the single trusted write path, `AgentRepository` covers
- * agents+services together since they're always read together for a
- * Passport. Over-abstracting every table into its own repository was
- * explicitly discouraged by the build prompt.
+ * Provides storage-agnostic interfaces for:
+ * - SAID Agents & Services
+ * - Observations (strictly append-only)
+ * - Incidents (failure detection & recovery)
+ * - Sync Runs (discovery execution history)
  */
 
 import type {
@@ -20,39 +13,40 @@ import type {
   AgentMetadata,
   AgentService,
   ChainId,
-  FeedbackAvailability,
-  FeedbackRecord,
-  IntegritySignal,
+  Incident,
   ProbeObservation,
-  ReputationEvidence,
+  SyncRun,
 } from './domain';
 
 export interface Page<T> {
   items: T[];
   nextCursor?: string;
+  total?: number;
 }
 
 export interface AgentRepository {
-  listAgents(opts: { chain?: ChainId; limit: number; cursor?: string }): Promise<Page<AgentIdentity>>;
-  getAgent(chain: ChainId, agentId: string): Promise<AgentIdentity | null>;
+  listAgents(opts: {
+    chain?: ChainId;
+    limit: number;
+    cursor?: string;
+    verifiedOnly?: boolean;
+    searchQuery?: string;
+  }): Promise<Page<AgentIdentity>>;
+
+  getAgent(walletAddress: string): Promise<AgentIdentity | null>;
+  getAgentById(id: string): Promise<AgentIdentity | null>;
   getMetadata(agentId: string): Promise<AgentMetadata | null>;
   getServices(agentId: string): Promise<AgentService[]>;
+  upsertAgent(agent: AgentIdentity, metadata?: AgentMetadata, services?: AgentService[]): Promise<void>;
+  updateMonitoringStatus(agentId: string, isMonitored: boolean): Promise<void>;
 }
 
 export interface ObservationRepository {
-  /**
-   * The only write path into observation history. Implementations must
-   * follow an application-level append-only evidence architecture: this
-   * method INSERTs; it never updates or deletes an existing row. This is
-   * enforced by the absence of any update/delete method on this interface —
-   * not by a database-level constraint (no such constraint exists yet; see
-   * docs/ARCHITECTURE.md "Append-only enforcement level"). Only trusted
-   * probe-execution code may call this — never exposed behind a public API
-   * route (see docs/SECURITY_MODEL.md).
-   */
+  /** Append-only trusted observation insertion */
   recordObservation(observation: ProbeObservation): Promise<void>;
+  recordBatchObservations(observations: ProbeObservation[]): Promise<void>;
 
-  /** All observations for an agent (optionally scoped to one service) within [since, until]. Used to feed the reliability engine — the engine itself does no I/O. */
+  /** List observations for an agent within [since, until] */
   listObservations(opts: {
     agentId: string;
     serviceId?: string;
@@ -61,22 +55,21 @@ export interface ObservationRepository {
     limit: number;
     cursor?: string;
   }): Promise<Page<ProbeObservation>>;
+
+  /** Get latest observation for an agent */
+  getLatestObservation(agentId: string): Promise<ProbeObservation | null>;
 }
 
-/**
- * Result of a feedback lookup. `status` MUST be checked before touching
- * `records` — a `NOT_INGESTED`/`UPSTREAM_UNAVAILABLE`/`UNSUPPORTED` status
- * with an empty `records` array means "we don't know," not "there are
- * zero." See docs/REPUTATION_INTEGRITY.md "Feedback availability semantics".
- */
-export interface FeedbackQueryResult {
-  status: FeedbackAvailability;
-  /** Only meaningful when status === 'AVAILABLE'. Empty for every other status — never populated as a stand-in for "we don't know." */
-  records: FeedbackRecord[];
+export interface IncidentRepository {
+  recordIncident(incident: Incident): Promise<void>;
+  getActiveIncident(agentId: string, serviceId?: string): Promise<Incident | null>;
+  resolveIncident(incidentId: string, resolvedAt: string, recoveryObservedAt?: string): Promise<void>;
+  listIncidents(agentId: string, limit?: number): Promise<Incident[]>;
+  countActiveIncidents(): Promise<number>;
 }
 
-export interface ReputationRepository {
-  listFeedback(agentId: string): Promise<FeedbackQueryResult>;
-  recordReputationEvidence(evidence: ReputationEvidence): Promise<void>;
-  recordIntegritySignals(signals: IntegritySignal[]): Promise<void>;
+export interface SyncRunRepository {
+  startSyncRun(runId: string): Promise<void>;
+  finishSyncRun(run: SyncRun): Promise<void>;
+  getLatestSyncRun(): Promise<SyncRun | null>;
 }

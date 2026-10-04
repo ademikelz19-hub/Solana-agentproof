@@ -34,7 +34,7 @@ export function Footer() {
                   width: 26,
                   height: 26,
                   borderRadius: 6,
-                  background: 'var(--accent-bnb)',
+                  background: 'var(--accent-solana)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -44,11 +44,11 @@ export function Footer() {
                 <Shield size={15} strokeWidth={2.5} />
               </div>
               <span style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)' }}>
-                AgentProof
+                AgentProof Sentinel
               </span>
             </div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.6, maxWidth: 320 }}>
-              Continuous, independent reachability, latency, and reputation integrity evidence for autonomous onchain agents.
+              Reliability intelligence for AI agents on Solana. Identity tells you who an agent is. Sentinel shows whether it is actually delivering.
             </p>
             <div
               style={{
@@ -65,7 +65,7 @@ export function Footer() {
                 color: 'var(--text-muted)',
               }}
             >
-              <span>Methodology: Reliability v0.1.0 • Reputation v0.1.0</span>
+              <span>Built for SAID Protocol Streaming Grant • Solana Mainnet</span>
             </div>
           </div>
 
@@ -89,7 +89,7 @@ export function Footer() {
                   href="/agents"
                   style={{ color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
                 >
-                  <Activity size={13} color="var(--accent-bnb)" />
+                  <Activity size={13} color="var(--accent-solana)" />
                   <span>Agent Directory</span>
                 </Link>
               </li>
@@ -108,19 +108,17 @@ export function Footer() {
                   style={{ color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
                 >
                   <Code size={13} />
-                  <span>Public API Documentation</span>
+                  <span>Developer API &amp; x402</span>
                 </Link>
               </li>
               <li>
-                <a
-                  href="/api/v1/agents?chain=bsc&limit=10"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                <Link
+                  href="/grant-demo"
+                  style={{ color: 'var(--accent-solana)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}
                 >
-                  <ExternalLink size={13} />
-                  <span>Live REST API Endpoint</span>
-                </a>
+                  <span>Grant Reviewer Demo</span>
+                  <ExternalLink size={12} />
+                </Link>
               </li>
             </ul>
           </div>
@@ -141,19 +139,27 @@ export function Footer() {
             </h3>
             <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.875rem' }}>
               <li>
-                <span style={{ color: 'var(--text-secondary)' }}>BNB Chain (Chain ID 56)</span>
-              </li>
-              <li>
-                <span style={{ color: 'var(--text-secondary)' }}>ERC-8004 Agent Standard</span>
+                <span style={{ color: 'var(--text-secondary)' }}>Solana Mainnet</span>
               </li>
               <li>
                 <a
-                  href="https://8004scan.io"
+                  href="https://saidprotocol.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
                 >
-                  <span>8004scan Explorer</span>
+                  <span>SAID Protocol (5dpw6K...)</span>
+                  <ExternalLink size={11} />
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://solscan.io"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                >
+                  <span>Solscan Explorer</span>
                   <ExternalLink size={11} />
                 </a>
               </li>
@@ -186,14 +192,11 @@ export function Footer() {
           }}
         >
           <p>
-            <strong>Disclaimer:</strong> Monitoring autonomous agents on BNB Chain. AgentProof is independent developer infrastructure; it is not affiliated with, sponsored by, or endorsed by BNB Chain, Binance, or any monitored agent developers.
-          </p>
-          <p>
-            Measurements are recorded via SSRF-hardened deterministic probes. Reliability calculations reflect empirical reachability and response characteristics over specified sliding windows; they do not constitute financial advice, security audits, or safety guarantees.
+            <strong>Disclaimer:</strong> AgentProof Sentinel is an autonomous operational reliability layer for AI agents registered on SAID Protocol on Solana. SAID Protocol provides official identity registration and protocol trust tiering; Sentinel independently measures real-world service uptime, latency, and response consistency. Sentinel scores represent operational telemetry only and are never confused with official SAID trust tiering.
           </p>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <span>© {new Date().getFullYear()} AgentProof. Open reliability infrastructure.</span>
-            <span className="font-mono">Built with Next.js &amp; Neon Serverless Postgres</span>
+            <span>© {new Date().getFullYear()} AgentProof Sentinel. Open reliability infrastructure for Solana AI agents.</span>
+            <span className="font-mono">Solana Mainnet • Program: 5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G</span>
           </div>
         </div>
       </div>

@@ -1,9 +1,8 @@
 /**
- * Drizzle-backed implementations of @agentproof/core's repository interfaces.
+ * Drizzle-backed repositories for AgentProof Sentinel on Solana Mainnet.
  */
 
-import { randomUUID } from 'node:crypto';
-import { and, desc, eq, gte, lte, lt, or } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, lt, lte, or } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type {
   AgentIdentity,
@@ -11,354 +10,333 @@ import type {
   AgentRepository,
   AgentService,
   ChainId,
-  FeedbackQueryResult,
-  FeedbackRecord,
-  IntegritySignal,
+  Incident,
+  IncidentRepository,
   ObservationRepository,
   Page,
   ProbeObservation,
-  ReputationEvidence,
-  ReputationRepository,
-  ServiceProtocol,
+  ProbeType,
+  SaidVerificationStatus,
+  SyncRun,
+  SyncRunRepository,
 } from '@agentproof/core';
+import { isValidSolanaAddress } from '@agentproof/core';
 import * as schema from './schema';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = PgDatabase<any, typeof schema, any>;
 
-function normalizeAgentId(rawId: string, chain: string = 'bsc'): string {
+function normalizeSolanaWallet(rawWallet: string): string {
   try {
-    const decoded = decodeURIComponent(rawId).trim();
-    if (decoded.includes(':')) return decoded;
-    return `${chain}:${decoded}`;
+    const decoded = decodeURIComponent(rawWallet).trim();
+    if (decoded.startsWith('solana:')) {
+      return decoded.replace('solana:', '').trim();
+    }
+    return decoded;
   } catch {
-    return rawId.trim();
+    return rawWallet.trim();
   }
 }
 
 export class DrizzleAgentRepository implements AgentRepository {
   constructor(private readonly db: AnyDb) {}
 
-  async listAgents(opts: { chain?: ChainId; limit: number; cursor?: string }): Promise<Page<AgentIdentity>> {
+  async listAgents(opts: {
+    chain?: ChainId;
+    limit: number;
+    cursor?: string;
+    verifiedOnly?: boolean;
+    searchQuery?: string;
+  }): Promise<Page<AgentIdentity>> {
     const conditions = [
       opts.chain ? eq(schema.agents.chain, opts.chain) : undefined,
       opts.cursor ? lt(schema.agents.id, opts.cursor) : undefined,
+      opts.verifiedOnly ? eq(schema.agents.verificationStatus, 'VERIFIED') : undefined,
     ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+
+    if (opts.searchQuery && opts.searchQuery.trim().length > 0) {
+      const q = `%${opts.searchQuery.trim()}%`;
+      conditions.push(
+        or(
+          ilike(schema.agents.name, q),
+          ilike(schema.agents.walletAddress, q),
+          ilike(schema.agents.description, q),
+        )!,
+      );
+    }
 
     const rows = await this.db
       .select()
       .from(schema.agents)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(schema.agents.id))
+      .orderBy(desc(schema.agents.lastSyncedAt))
       .limit(opts.limit + 1);
 
     const hasMore = rows.length > opts.limit;
     const page = rows.slice(0, opts.limit);
     const lastId = page[page.length - 1]?.id;
 
-    return {
-      items: page.map((r) => ({
+    const items: AgentIdentity[] = page.map((r) => {
+      let skills: string[] = [];
+      let serviceTypes: string[] = [];
+      try {
+        if (r.skills) skills = JSON.parse(r.skills);
+        if (r.serviceTypes) serviceTypes = JSON.parse(r.serviceTypes);
+      } catch {
+        // ignore parse error
+      }
+
+      return {
         id: r.id,
         chain: r.chain as ChainId,
-        onchainId: r.onchainId,
-        ...(r.registryAddress ? { registryAddress: r.registryAddress } : {}),
+        walletAddress: r.walletAddress,
+        name: r.name ?? `Agent ${r.walletAddress.slice(0, 4)}..${r.walletAddress.slice(-4)}`,
+        description: r.description ?? undefined,
+        verificationStatus: r.verificationStatus as SaidVerificationStatus,
+        trustTier: r.trustTier ?? undefined,
+        saidReputationScore: r.saidReputationScore ?? undefined,
+        skills,
+        serviceTypes,
+        website: r.website ?? undefined,
+        mcpEndpoint: r.mcpEndpoint ?? undefined,
+        a2aEndpoint: r.a2aEndpoint ?? undefined,
+        firstSeenAt: r.firstSeenAt ? new Date(r.firstSeenAt).toISOString() : new Date().toISOString(),
+        lastSyncedAt: r.lastSyncedAt ? new Date(r.lastSyncedAt).toISOString() : new Date().toISOString(),
+        isMonitored: r.isMonitored ?? false,
         provenance: {
           source: r.provenanceSource as AgentIdentity['provenance']['source'],
           origin: r.provenanceOrigin,
-          observedAt: r.lastIngestedAt ? new Date(r.lastIngestedAt).toISOString() : new Date().toISOString(),
+          observedAt: r.lastSyncedAt ? new Date(r.lastSyncedAt).toISOString() : new Date().toISOString(),
         },
-      })),
+      };
+    });
+
+    return {
+      items,
       ...(hasMore && lastId ? { nextCursor: lastId } : {}),
     };
   }
 
-  async getAgent(chain: ChainId, id: string): Promise<AgentIdentity | null> {
-    const normalized = normalizeAgentId(id, chain);
-    const tokenId = id.includes(':') ? id.split(':').pop()! : id;
+  async getAgent(walletAddress: string): Promise<AgentIdentity | null> {
+    const cleanWallet = normalizeSolanaWallet(walletAddress);
+    const agentId = `solana:${cleanWallet}`;
 
-    let [row] = await this.db
-      .select()
-      .from(schema.agents)
-      .where(
-        or(
-          and(eq(schema.agents.chain, chain), eq(schema.agents.id, normalized)),
-          and(eq(schema.agents.chain, chain), eq(schema.agents.onchainId, tokenId)),
-          and(eq(schema.agents.chain, chain), eq(schema.agents.onchainId, id)),
-          and(eq(schema.agents.chain, chain), eq(schema.agents.id, id))
-        )
-      )
-      .limit(1);
-
-    // On-demand discovery: If agent is not yet in the DB and chain is BSC, fetch directly from 8004scan
-    if (!row && chain === 'bsc' && tokenId) {
-      try {
-        const res = await fetch(`https://8004scan.io/api/v1/public/agents/56/${tokenId}`, {
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'AgentProof/0.1.0 (observational reliability monitor)',
-          },
-        });
-        if (res.ok) {
-          const json = (await res.json()) as any;
-          if (json.success && json.data) {
-            const agentData = json.data;
-            const now = new Date();
-            const newAgentId = `bsc:${agentData.token_id}`;
-            const offchainContent = agentData.raw_metadata?.offchain_content;
-            const metadataUri = agentData.raw_metadata?.offchain_uri ?? null;
-            const metadataResolved = !!offchainContent;
-
-            const [inserted] = await this.db
-              .insert(schema.agents)
-              .values({
-                id: newAgentId,
-                chain: 'bsc',
-                onchainId: String(agentData.token_id),
-                registryAddress: agentData.contract_address || '0x8004a169fb4a3325136eb29fa0ceb6d2e539a432',
-                name: agentData.name || null,
-                description: agentData.description || null,
-                metadataUri,
-                metadataResolved,
-                provenanceSource: 'INDEXER',
-                provenanceOrigin: '8004scan',
-                firstSeenAt: now,
-                lastIngestedAt: now,
-              })
-              .onConflictDoNothing()
-              .returning();
-
-            if (inserted) {
-              row = inserted;
-            } else {
-              const [existing] = await this.db
-                .select()
-                .from(schema.agents)
-                .where(eq(schema.agents.id, newAgentId))
-                .limit(1);
-              row = existing;
-            }
-
-            // Ingest declared services if present
-            const servicesList: Array<{ endpoint: string; name?: string }> = [];
-            if (offchainContent?.services && Array.isArray(offchainContent.services)) {
-              for (const svc of offchainContent.services) {
-                if (svc && svc.endpoint) servicesList.push(svc);
-              }
-            } else if (agentData.services?.web?.endpoint) {
-              servicesList.push({ name: 'web', endpoint: agentData.services.web.endpoint });
-            }
-
-            for (const svc of servicesList) {
-              const proto = (svc.name?.toUpperCase() === 'A2A' ? 'A2A' : svc.name?.toUpperCase() === 'MCP' ? 'MCP' : 'WEB') as any;
-              const svcId = `svc:${newAgentId}:${svc.name || 'web'}`;
-              await this.db
-                .insert(schema.services)
-                .values({
-                  id: svcId,
-                  agentId: newAgentId,
-                  chain: 'bsc',
-                  declarationForm: 'ERC8004_METADATA',
-                  protocol: proto,
-                  url: svc.endpoint,
-                  provenanceSource: 'ERC8004_METADATA',
-                  provenanceOrigin: '8004scan',
-                  createdAt: now,
-                })
-                .onConflictDoNothing()
-                .catch(() => {});
-            }
-
-            // Perform live initial probe if an endpoint or metadata URI exists
-            const targetUrl = servicesList[0]?.endpoint || (metadataUri?.startsWith('http') ? metadataUri : null);
-            if (targetUrl) {
-              try {
-                const probeStart = Date.now();
-                const probeRes = await fetch(targetUrl, {
-                  method: 'GET',
-                  headers: { 'User-Agent': 'AgentProof/0.1.0 (observational reliability monitor)' },
-                  signal: AbortSignal.timeout(3500),
-                });
-                const probeLatency = Date.now() - probeStart;
-                const isOk = probeRes.status >= 200 && probeRes.status < 400;
-
-                for (let i = 0; i < 3; i++) {
-                  const obsTime = new Date(now.getTime() - (2 - i) * 60 * 1000);
-                  const jitterLatency = Math.max(20, probeLatency + (i === 1 ? -15 : i === 2 ? 25 : 0));
-                  await this.db.insert(schema.observations).values({
-                    id: randomUUID(),
-                    probeRunId: null,
-                    agentId: newAgentId,
-                    chain: 'bsc',
-                    serviceId: servicesList[0] ? `svc:${newAgentId}:${servicesList[0].name || 'web'}` : null,
-                    probeType: 'HTTP_STATUS',
-                    timestamp: obsTime,
-                    outcome: isOk ? 'SUCCESS' : 'AGENT_UNREACHABLE',
-                    latencyMs: jitterLatency,
-                    httpStatus: probeRes.status,
-                    failureReason: isOk ? null : `HTTP ${probeRes.status}`,
-                    provenanceSource: 'AGENTPROOF_MEASUREMENT',
-                    provenanceOrigin: 'agentproof-on-demand-probe',
-                    probeVersion: '0.1.0',
-                    methodologyVersion: '0.1.0',
-                  });
-                }
-              } catch (probeErr: any) {
-                await this.db.insert(schema.observations).values({
-                  id: randomUUID(),
-                  probeRunId: null,
-                  agentId: newAgentId,
-                  chain: 'bsc',
-                  serviceId: null,
-                  probeType: 'HTTP_STATUS',
-                  timestamp: now,
-                  outcome: 'TIMEOUT',
-                  latencyMs: 3500,
-                  httpStatus: null,
-                  failureReason: probeErr?.message || 'Connection timed out',
-                  provenanceSource: 'AGENTPROOF_MEASUREMENT',
-                  provenanceOrigin: 'agentproof-on-demand-probe',
-                  probeVersion: '0.1.0',
-                  methodologyVersion: '0.1.0',
-                }).catch(() => {});
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn(`[AgentProof] On-demand discovery error for ${id}:`, err);
-      }
-    }
-
-    if (!row) return null;
-
-    return {
-      id: row.id,
-      chain: row.chain as ChainId,
-      onchainId: row.onchainId,
-      ...(row.registryAddress ? { registryAddress: row.registryAddress } : {}),
-      provenance: {
-        source: row.provenanceSource as AgentIdentity['provenance']['source'],
-        origin: row.provenanceOrigin,
-        observedAt: row.lastIngestedAt ? new Date(row.lastIngestedAt).toISOString() : new Date().toISOString(),
-      },
-    };
-  }
-
-  async getMetadata(agentId: string): Promise<AgentMetadata | null> {
-    const normalized = normalizeAgentId(agentId);
-    const tokenId = agentId.includes(':') ? agentId.split(':').pop()! : agentId;
     const [row] = await this.db
       .select()
       .from(schema.agents)
       .where(
         or(
-          eq(schema.agents.id, normalized),
-          eq(schema.agents.onchainId, tokenId),
-          eq(schema.agents.id, agentId)
-        )
+          eq(schema.agents.walletAddress, cleanWallet),
+          eq(schema.agents.id, agentId),
+          eq(schema.agents.id, walletAddress),
+        ),
       )
       .limit(1);
 
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
+
+    let skills: string[] = [];
+    let serviceTypes: string[] = [];
+    try {
+      if (row.skills) skills = JSON.parse(row.skills);
+      if (row.serviceTypes) serviceTypes = JSON.parse(row.serviceTypes);
+    } catch {
+      // ignore
+    }
 
     return {
-      agentId: row.id,
-      ...(row.name ? { name: row.name } : {}),
-      ...(row.description ? { description: row.description } : {}),
-      ...(row.metadataUri ? { metadataUri: row.metadataUri } : {}),
-      metadataResolved: row.metadataResolved,
+      id: row.id,
+      chain: row.chain as ChainId,
+      walletAddress: row.walletAddress,
+      name: row.name ?? `Agent ${row.walletAddress.slice(0, 4)}..${row.walletAddress.slice(-4)}`,
+      description: row.description ?? undefined,
+      verificationStatus: row.verificationStatus as SaidVerificationStatus,
+      trustTier: row.trustTier ?? undefined,
+      saidReputationScore: row.saidReputationScore ?? undefined,
+      skills,
+      serviceTypes,
+      website: row.website ?? undefined,
+      mcpEndpoint: row.mcpEndpoint ?? undefined,
+      a2aEndpoint: row.a2aEndpoint ?? undefined,
+      firstSeenAt: row.firstSeenAt ? new Date(row.firstSeenAt).toISOString() : new Date().toISOString(),
+      lastSyncedAt: row.lastSyncedAt ? new Date(row.lastSyncedAt).toISOString() : new Date().toISOString(),
+      isMonitored: row.isMonitored ?? false,
       provenance: {
-        source: row.provenanceSource as AgentMetadata['provenance']['source'],
+        source: row.provenanceSource as AgentIdentity['provenance']['source'],
         origin: row.provenanceOrigin,
-        observedAt: row.lastIngestedAt ? new Date(row.lastIngestedAt).toISOString() : new Date().toISOString(),
+        observedAt: row.lastSyncedAt ? new Date(row.lastSyncedAt).toISOString() : new Date().toISOString(),
       },
     };
   }
 
+  async getAgentById(id: string): Promise<AgentIdentity | null> {
+    const [row] = await this.db
+      .select()
+      .from(schema.agents)
+      .where(eq(schema.agents.id, id))
+      .limit(1);
+
+    if (!row) return null;
+    return this.getAgent(row.walletAddress);
+  }
+
+  async getMetadata(agentId: string): Promise<AgentMetadata | null> {
+    const agent = await this.getAgentById(agentId);
+    if (!agent) return null;
+
+    return {
+      agentId: agent.id,
+      name: agent.name,
+      description: agent.description,
+      website: agent.website,
+      skills: agent.skills,
+      serviceTypes: agent.serviceTypes,
+      mcpEndpoint: agent.mcpEndpoint,
+      a2aEndpoint: agent.a2aEndpoint,
+      metadataResolved: true,
+      provenance: agent.provenance,
+    };
+  }
+
   async getServices(agentId: string): Promise<AgentService[]> {
-    const normalized = normalizeAgentId(agentId);
-    const tokenId = agentId.includes(':') ? agentId.split(':').pop()! : agentId;
     const rows = await this.db
       .select()
       .from(schema.services)
-      .where(
-        or(
-          eq(schema.services.agentId, normalized),
-          eq(schema.services.agentId, `bsc:${tokenId}`),
-          eq(schema.services.agentId, agentId)
-        )
-      );
+      .where(eq(schema.services.agentId, agentId));
 
     return rows.map((r) => ({
       id: r.id,
       agentId: r.agentId,
-      chain: 'bsc' as ChainId,
-      protocol: r.protocol as ServiceProtocol,
+      chain: r.chain as ChainId,
+      endpointType: r.endpointType as AgentService['endpointType'],
+      protocol: r.protocol as AgentService['protocol'],
       url: r.url,
-      declarationForm: r.declarationForm as AgentService['declarationForm'],
+      enabled: r.enabled ?? true,
+      firstMonitoredAt: r.firstMonitoredAt ? new Date(r.firstMonitoredAt).toISOString() : undefined,
+      lastMonitoredAt: r.lastMonitoredAt ? new Date(r.lastMonitoredAt).toISOString() : undefined,
+      failureCount: r.failureCount ?? 0,
+      lastSuccessAt: r.lastSuccessAt ? new Date(r.lastSuccessAt).toISOString() : undefined,
       provenance: {
         source: r.provenanceSource as AgentService['provenance']['source'],
         origin: r.provenanceOrigin,
-        observedAt: new Date().toISOString(),
+        observedAt: r.createdAt ? new Date(r.createdAt).toISOString() : new Date().toISOString(),
       },
     }));
+  }
+
+  async upsertAgent(
+    agent: AgentIdentity,
+    metadata?: AgentMetadata,
+    servicesList?: AgentService[],
+  ): Promise<void> {
+    const now = new Date();
+    const skillsJson = JSON.stringify(agent.skills ?? []);
+    const serviceTypesJson = JSON.stringify(agent.serviceTypes ?? []);
+
+    const existing = await this.db
+      .select()
+      .from(schema.agents)
+      .where(eq(schema.agents.id, agent.id))
+      .limit(1);
+
+    if (existing.length === 0) {
+      await this.db.insert(schema.agents).values({
+        id: agent.id,
+        chain: agent.chain,
+        walletAddress: agent.walletAddress,
+        name: agent.name,
+        description: agent.description ?? null,
+        verificationStatus: agent.verificationStatus,
+        trustTier: agent.trustTier ?? null,
+        saidReputationScore: agent.saidReputationScore ?? null,
+        skills: skillsJson,
+        serviceTypes: serviceTypesJson,
+        website: agent.website ?? null,
+        mcpEndpoint: agent.mcpEndpoint ?? null,
+        a2aEndpoint: agent.a2aEndpoint ?? null,
+        metadataResolved: metadata?.metadataResolved ?? false,
+        isMonitored: agent.isMonitored,
+        provenanceSource: agent.provenance.source,
+        provenanceOrigin: agent.provenance.origin,
+        firstSeenAt: new Date(agent.firstSeenAt),
+        lastSyncedAt: now,
+      });
+    } else {
+      await this.db
+        .update(schema.agents)
+        .set({
+          name: agent.name,
+          description: agent.description ?? null,
+          verificationStatus: agent.verificationStatus,
+          trustTier: agent.trustTier ?? null,
+          saidReputationScore: agent.saidReputationScore ?? null,
+          skills: skillsJson,
+          serviceTypes: serviceTypesJson,
+          website: agent.website ?? null,
+          mcpEndpoint: agent.mcpEndpoint ?? null,
+          a2aEndpoint: agent.a2aEndpoint ?? null,
+          metadataResolved: metadata?.metadataResolved ?? existing[0]?.metadataResolved ?? false,
+          isMonitored: agent.isMonitored,
+          provenanceSource: agent.provenance.source,
+          provenanceOrigin: agent.provenance.origin,
+          lastSyncedAt: now,
+        })
+        .where(eq(schema.agents.id, agent.id));
+    }
+
+    if (servicesList && servicesList.length > 0) {
+      for (const svc of servicesList) {
+        const existingSvc = await this.db
+          .select()
+          .from(schema.services)
+          .where(eq(schema.services.id, svc.id))
+          .limit(1);
+
+        if (existingSvc.length === 0) {
+          await this.db.insert(schema.services).values({
+            id: svc.id,
+            agentId: svc.agentId,
+            chain: svc.chain,
+            endpointType: svc.endpointType,
+            protocol: svc.protocol,
+            url: svc.url,
+            enabled: svc.enabled,
+            failureCount: svc.failureCount,
+            provenanceSource: svc.provenance.source,
+            provenanceOrigin: svc.provenance.origin,
+            createdAt: now,
+          });
+        } else {
+          await this.db
+            .update(schema.services)
+            .set({
+              url: svc.url,
+              protocol: svc.protocol,
+              endpointType: svc.endpointType,
+              enabled: svc.enabled,
+            })
+            .where(eq(schema.services.id, svc.id));
+        }
+      }
+    }
+  }
+
+  async updateMonitoringStatus(agentId: string, isMonitored: boolean): Promise<void> {
+    await this.db
+      .update(schema.agents)
+      .set({ isMonitored })
+      .where(eq(schema.agents.id, agentId));
   }
 }
 
 export class DrizzleObservationRepository implements ObservationRepository {
   constructor(private readonly db: AnyDb) {}
 
-  async listObservations(opts: {
-    agentId?: string;
-    chain?: ChainId;
-    serviceId?: string;
-    since?: string;
-    until?: string;
-    limit: number;
-    cursor?: string;
-  }): Promise<Page<ProbeObservation>> {
-    const conditions = [];
-
-    if (opts.agentId) {
-      const normalized = normalizeAgentId(opts.agentId);
-      conditions.push(or(eq(schema.observations.agentId, normalized), eq(schema.observations.agentId, opts.agentId)));
-    }
-    if (opts.chain) {
-      conditions.push(eq(schema.observations.chain, opts.chain));
-    }
-    if (opts.serviceId) {
-      conditions.push(eq(schema.observations.serviceId, opts.serviceId));
-    }
-    if (opts.since) {
-      conditions.push(gte(schema.observations.timestamp, new Date(opts.since)));
-    }
-    if (opts.until) {
-      conditions.push(lte(schema.observations.timestamp, new Date(opts.until)));
-    }
-    if (opts.cursor) {
-      conditions.push(lt(schema.observations.id, opts.cursor));
-    }
-
-    const rows = await this.db
-      .select()
-      .from(schema.observations)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(schema.observations.timestamp))
-      .limit(opts.limit + 1);
-
-    const hasMore = rows.length > opts.limit;
-    const page = rows.slice(0, opts.limit);
-    const lastId = page[page.length - 1]?.id;
-    return {
-      items: page.map(rowToObservation),
-      ...(hasMore && lastId ? { nextCursor: lastId } : {}),
-    };
-  }
-
   async recordObservation(obs: ProbeObservation): Promise<void> {
     await this.db.insert(schema.observations).values({
       id: obs.id,
-      probeRunId: null,
       agentId: obs.agentId,
       chain: obs.chain,
       serviceId: obs.serviceId ?? null,
@@ -374,147 +352,254 @@ export class DrizzleObservationRepository implements ObservationRepository {
       methodologyVersion: obs.methodologyVersion,
     });
   }
-}
 
-function rowToObservation(row: typeof schema.observations.$inferSelect): ProbeObservation {
-  const timestampStr = row.timestamp ? new Date(row.timestamp).toISOString() : new Date().toISOString();
-  return {
-    id: row.id,
-    agentId: row.agentId,
-    chain: row.chain as ChainId,
-    ...(row.serviceId ? { serviceId: row.serviceId } : {}),
-    probeType: row.probeType as ProbeObservation['probeType'],
-    timestamp: timestampStr,
-    outcome: row.outcome as ProbeObservation['outcome'],
-    ...(row.latencyMs !== null ? { latencyMs: row.latencyMs } : {}),
-    ...(row.httpStatus !== null ? { httpStatus: row.httpStatus } : {}),
-    ...(row.failureReason ? { failureReason: row.failureReason } : {}),
-    provenance: {
-      source: row.provenanceSource as ProbeObservation['provenance']['source'],
-      origin: row.provenanceOrigin,
-      observedAt: timestampStr,
-    },
-    probeVersion: row.probeVersion,
-    methodologyVersion: row.methodologyVersion,
-  };
-}
-
-// In-memory cache for 8004scan global feedback to ensure instant response times
-interface CachedFeedbacks {
-  data: Array<{
-    user_address?: string;
-    submitted_at?: string;
-    agent?: { token_id?: string };
-  }>;
-  fetchedAt: number;
-}
-let feedbackCache: CachedFeedbacks | null = null;
-const FEEDBACK_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-export class DrizzleReputationRepository implements ReputationRepository {
-  constructor(private readonly db: AnyDb) {}
-
-  async listFeedback(agentId: string): Promise<FeedbackQueryResult> {
-    const normalized = normalizeAgentId(agentId);
-    const match = /^bsc:(\d+)$/.exec(normalized);
-    if (!match) {
-      return { status: 'NOT_INGESTED', records: [] };
-    }
-    const tokenId = match[1];
-    const apiKey = process.env['EIGHT004SCAN_API_KEY'] ?? process.env['EIGHT_O_FOUR_API_KEY'];
-    if (!apiKey) {
-      return { status: 'UPSTREAM_UNAVAILABLE', records: [] };
-    }
-
-    const now = Date.now();
-    let rawFeedbackData = feedbackCache?.data;
-
-    if (!feedbackCache || now - feedbackCache.fetchedAt > FEEDBACK_CACHE_TTL) {
-      const url = `https://8004scan.io/api/v1/public/feedbacks?chainId=56&limit=500`;
-      try {
-        const res = await fetch(url, {
-          headers: { 'X-API-Key': apiKey },
-          signal: AbortSignal.timeout(1500), // Strict 1.5s timeout so page loads are never delayed
-        });
-
-        if (res.ok) {
-          const body = (await res.json()) as {
-            success: boolean;
-            data?: Array<{
-              user_address?: string;
-              submitted_at?: string;
-              agent?: { token_id?: string };
-            }>;
-          };
-          if (body.success && Array.isArray(body.data)) {
-            feedbackCache = {
-              data: body.data,
-              fetchedAt: now,
-            };
-            rawFeedbackData = body.data;
-          }
-        }
-      } catch {
-        // If network timed out or failed, fall back to existing cache if available
-        rawFeedbackData = feedbackCache?.data;
-      }
-    }
-
-    if (!rawFeedbackData) {
-      return { status: 'NOT_INGESTED', records: [] };
-    }
-
-    // Filter to only this agent's feedback records
-    const agentRecords = rawFeedbackData.filter((r) => r.agent?.token_id === tokenId);
-
-    if (agentRecords.length === 0) {
-      return { status: 'NOT_INGESTED', records: [] };
-    }
-
-    const observedAt = new Date().toISOString();
-    const records: FeedbackRecord[] = agentRecords.map((raw) => ({
-      agentId,
-      reviewerId: raw.user_address ?? 'unknown',
-      timestamp: raw.submitted_at ?? observedAt,
-      provenance: {
-        source: 'INDEXER' as const,
-        origin: 'https://8004scan.io',
-        observedAt,
-      },
-    }));
-
-    return { status: 'AVAILABLE', records };
+  async recordBatchObservations(observationsList: ProbeObservation[]): Promise<void> {
+    if (observationsList.length === 0) return;
+    await this.db.insert(schema.observations).values(
+      observationsList.map((obs) => ({
+        id: obs.id,
+        agentId: obs.agentId,
+        chain: obs.chain,
+        serviceId: obs.serviceId ?? null,
+        probeType: obs.probeType,
+        timestamp: new Date(obs.timestamp),
+        outcome: obs.outcome,
+        latencyMs: obs.latencyMs ?? null,
+        httpStatus: obs.httpStatus ?? null,
+        failureReason: obs.failureReason ?? null,
+        provenanceSource: obs.provenance.source,
+        provenanceOrigin: obs.provenance.origin,
+        probeVersion: obs.probeVersion,
+        methodologyVersion: obs.methodologyVersion,
+      })),
+    );
   }
 
-  async recordReputationEvidence(evidence: ReputationEvidence): Promise<void> {
-    if (evidence.feedbackAvailability !== 'AVAILABLE') return;
-    await this.db.insert(schema.reputationSnapshots).values({
-      id: randomUUID(),
-      agentId: evidence.agentId,
-      feedbackCount: evidence.feedbackCount,
-      uniqueReviewerCount: evidence.uniqueReviewerCount,
-      reviewerConcentration: evidence.reviewerConcentration ?? null,
-      repeatReviewConcentration: evidence.repeatReviewConcentration ?? null,
-      methodologyVersion: evidence.methodologyVersion,
-      computedAt: new Date(evidence.computedAt),
-      provenanceSource: evidence.provenance.source,
-      provenanceOrigin: evidence.provenance.origin,
+  async listObservations(opts: {
+    agentId: string;
+    serviceId?: string;
+    since: string;
+    until: string;
+    limit: number;
+    cursor?: string;
+  }): Promise<Page<ProbeObservation>> {
+    const sinceDate = new Date(opts.since);
+    const untilDate = new Date(opts.until);
+
+    const conditions = [
+      eq(schema.observations.agentId, opts.agentId),
+      opts.serviceId ? eq(schema.observations.serviceId, opts.serviceId) : undefined,
+      gte(schema.observations.timestamp, sinceDate),
+      lte(schema.observations.timestamp, untilDate),
+    ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+
+    const rows = await this.db
+      .select()
+      .from(schema.observations)
+      .where(and(...conditions))
+      .orderBy(desc(schema.observations.timestamp))
+      .limit(opts.limit);
+
+    const items: ProbeObservation[] = rows.map((r) => ({
+      id: r.id,
+      agentId: r.agentId,
+      chain: r.chain as ChainId,
+      serviceId: r.serviceId ?? undefined,
+      probeType: r.probeType as ProbeType,
+      timestamp: new Date(r.timestamp).toISOString(),
+      outcome: r.outcome as ProbeObservation['outcome'],
+      latencyMs: r.latencyMs ?? undefined,
+      httpStatus: r.httpStatus ?? undefined,
+      failureReason: r.failureReason ?? undefined,
+      provenance: {
+        source: r.provenanceSource as ProbeObservation['provenance']['source'],
+        origin: r.provenanceOrigin,
+        observedAt: new Date(r.timestamp).toISOString(),
+      },
+      probeVersion: r.probeVersion,
+      methodologyVersion: r.methodologyVersion,
+    }));
+
+    return { items };
+  }
+
+  async getLatestObservation(agentId: string): Promise<ProbeObservation | null> {
+    const [row] = await this.db
+      .select()
+      .from(schema.observations)
+      .where(eq(schema.observations.agentId, agentId))
+      .orderBy(desc(schema.observations.timestamp))
+      .limit(1);
+
+    if (!row) return null;
+    return {
+      id: row.id,
+      agentId: row.agentId,
+      chain: row.chain as ChainId,
+      serviceId: row.serviceId ?? undefined,
+      probeType: row.probeType as ProbeType,
+      timestamp: new Date(row.timestamp).toISOString(),
+      outcome: row.outcome as ProbeObservation['outcome'],
+      latencyMs: row.latencyMs ?? undefined,
+      httpStatus: row.httpStatus ?? undefined,
+      failureReason: row.failureReason ?? undefined,
+      provenance: {
+        source: row.provenanceSource as ProbeObservation['provenance']['source'],
+        origin: row.provenanceOrigin,
+        observedAt: new Date(row.timestamp).toISOString(),
+      },
+      probeVersion: row.probeVersion,
+      methodologyVersion: row.methodologyVersion,
+    };
+  }
+}
+
+export class DrizzleIncidentRepository implements IncidentRepository {
+  constructor(private readonly db: AnyDb) {}
+
+  async recordIncident(inc: Incident): Promise<void> {
+    await this.db.insert(schema.incidents).values({
+      id: inc.id,
+      agentId: inc.agentId,
+      serviceId: inc.serviceId ?? null,
+      status: inc.status,
+      startedAt: new Date(inc.startedAt),
+      resolvedAt: inc.resolvedAt ? new Date(inc.resolvedAt) : null,
+      durationSeconds: inc.durationSeconds ?? null,
+      failureReason: inc.failureReason,
+      consecutiveFailures: inc.consecutiveFailures,
+      recoveryObservedAt: inc.recoveryObservedAt ? new Date(inc.recoveryObservedAt) : null,
     });
   }
 
-  async recordIntegritySignals(signals: IntegritySignal[]): Promise<void> {
-    if (signals.length === 0) return;
-    await this.db.insert(schema.integritySignals).values(
-      signals.map((s) => ({
-        id: s.id,
-        agentId: s.agentId,
-        signalType: s.signalType,
-        description: s.description,
-        detectedAt: new Date(s.detectedAt),
-        methodologyVersion: s.methodologyVersion,
-        provenanceSource: s.provenance.source,
-        provenanceOrigin: s.provenance.origin,
-      })),
-    );
+  async getActiveIncident(agentId: string, serviceId?: string): Promise<Incident | null> {
+    const conditions = [
+      eq(schema.incidents.agentId, agentId),
+      eq(schema.incidents.status, 'OPEN'),
+      serviceId ? eq(schema.incidents.serviceId, serviceId) : undefined,
+    ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+
+    const [row] = await this.db
+      .select()
+      .from(schema.incidents)
+      .where(and(...conditions))
+      .orderBy(desc(schema.incidents.startedAt))
+      .limit(1);
+
+    if (!row) return null;
+    return {
+      id: row.id,
+      agentId: row.agentId,
+      serviceId: row.serviceId ?? undefined,
+      status: row.status as Incident['status'],
+      startedAt: new Date(row.startedAt).toISOString(),
+      resolvedAt: row.resolvedAt ? new Date(row.resolvedAt).toISOString() : undefined,
+      durationSeconds: row.durationSeconds ?? undefined,
+      failureReason: row.failureReason,
+      consecutiveFailures: row.consecutiveFailures,
+      recoveryObservedAt: row.recoveryObservedAt ? new Date(row.recoveryObservedAt).toISOString() : undefined,
+    };
+  }
+
+  async resolveIncident(incidentId: string, resolvedAt: string, recoveryObservedAt?: string): Promise<void> {
+    const [inc] = await this.db
+      .select()
+      .from(schema.incidents)
+      .where(eq(schema.incidents.id, incidentId))
+      .limit(1);
+
+    if (inc) {
+      const durSec = Math.max(
+        0,
+        Math.floor((new Date(resolvedAt).getTime() - new Date(inc.startedAt).getTime()) / 1000),
+      );
+
+      await this.db
+        .update(schema.incidents)
+        .set({
+          status: 'RESOLVED',
+          resolvedAt: new Date(resolvedAt),
+          recoveryObservedAt: recoveryObservedAt ? new Date(recoveryObservedAt) : new Date(resolvedAt),
+          durationSeconds: durSec,
+        })
+        .where(eq(schema.incidents.id, incidentId));
+    }
+  }
+
+  async listIncidents(agentId: string, limit = 20): Promise<Incident[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.incidents)
+      .where(eq(schema.incidents.agentId, agentId))
+      .orderBy(desc(schema.incidents.startedAt))
+      .limit(limit);
+
+    return rows.map((r) => ({
+      id: r.id,
+      agentId: r.agentId,
+      serviceId: r.serviceId ?? undefined,
+      status: r.status as Incident['status'],
+      startedAt: new Date(r.startedAt).toISOString(),
+      resolvedAt: r.resolvedAt ? new Date(r.resolvedAt).toISOString() : undefined,
+      durationSeconds: r.durationSeconds ?? undefined,
+      failureReason: r.failureReason,
+      consecutiveFailures: r.consecutiveFailures,
+      recoveryObservedAt: r.recoveryObservedAt ? new Date(r.recoveryObservedAt).toISOString() : undefined,
+    }));
+  }
+
+  async countActiveIncidents(): Promise<number> {
+    const rows = await this.db
+      .select()
+      .from(schema.incidents)
+      .where(eq(schema.incidents.status, 'OPEN'));
+
+    return rows.length;
+  }
+}
+
+export class DrizzleSyncRunRepository implements SyncRunRepository {
+  constructor(private readonly db: AnyDb) {}
+
+  async startSyncRun(runId: string): Promise<void> {
+    await this.db.insert(schema.syncRuns).values({
+      id: runId,
+      startedAt: new Date(),
+      status: 'RUNNING',
+    });
+  }
+
+  async finishSyncRun(run: SyncRun): Promise<void> {
+    await this.db
+      .update(schema.syncRuns)
+      .set({
+        finishedAt: run.finishedAt ? new Date(run.finishedAt) : new Date(),
+        agentsDiscovered: run.agentsDiscovered,
+        agentsUpdated: run.agentsUpdated,
+        servicesRegistered: run.servicesRegistered,
+        status: run.status,
+        errorMessage: run.errorMessage ?? null,
+      })
+      .where(eq(schema.syncRuns.id, run.id));
+  }
+
+  async getLatestSyncRun(): Promise<SyncRun | null> {
+    const [row] = await this.db
+      .select()
+      .from(schema.syncRuns)
+      .orderBy(desc(schema.syncRuns.startedAt))
+      .limit(1);
+
+    if (!row) return null;
+    return {
+      id: row.id,
+      startedAt: new Date(row.startedAt).toISOString(),
+      finishedAt: row.finishedAt ? new Date(row.finishedAt).toISOString() : undefined,
+      agentsDiscovered: row.agentsDiscovered,
+      agentsUpdated: row.agentsUpdated,
+      servicesRegistered: row.servicesRegistered,
+      status: row.status as SyncRun['status'],
+      errorMessage: row.errorMessage ?? undefined,
+    };
   }
 }

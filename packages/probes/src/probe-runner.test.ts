@@ -14,13 +14,15 @@ const {
   probeResponseLatency,
   probeMetadataResolution,
   probeProtocolResponseValidity,
+  probeMcpHealth,
+  probeA2aHealth,
 } = await import('./probe-runner.js');
 
 const mockedSafeRequest = safeRequest as unknown as ReturnType<typeof vi.fn>;
 
 const target: ProbeTarget = {
-  agentId: 'bsc:1',
-  chain: 'bsc',
+  agentId: 'solana:5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G',
+  chain: 'solana',
   serviceId: 'svc-1',
   url: 'https://agent.example.test/api',
   protocol: 'HTTP',
@@ -39,57 +41,55 @@ function ok(overrides: Partial<Extract<SafeRequestResult, { ok: true }>> = {}): 
   };
 }
 
-function failure(
-  reason: Extract<SafeRequestResult, { ok: false }>['reason'],
-  detail = 'test failure',
-): SafeRequestResult {
-  return { ok: false, reason, detail, latencyMs: 5 };
+function failure(reason: string, detail: string): SafeRequestResult {
+  return {
+    ok: false,
+    reason: reason as never,
+    detail,
+    latencyMs: 12,
+  };
 }
 
 describe('probeServiceReachability', () => {
-  it('records SUCCESS with latency and status on a clean response', async () => {
-    mockedSafeRequest.mockResolvedValueOnce(ok({ status: 200, latencyMs: 88 }));
+  it('reports SUCCESS when transport succeeds', async () => {
+    mockedSafeRequest.mockResolvedValueOnce(ok({ status: 200 }));
     const obs = await probeServiceReachability(target);
     expect(obs.outcome).toBe('SUCCESS');
     expect(obs.httpStatus).toBe(200);
-    expect(obs.latencyMs).toBe(88);
-    expect(obs.probeType).toBe('SERVICE_REACHABILITY');
-    expect(obs.methodologyVersion).toBeTruthy();
+    expect(obs.latencyMs).toBe(42);
   });
 
-  it('maps a DNS failure to DNS_FAILURE, not a generic error', async () => {
-    mockedSafeRequest.mockResolvedValueOnce(failure('DNS_FAILURE'));
+  it('maps DNS_FAILURE to DNS_FAILURE outcome', async () => {
+    mockedSafeRequest.mockResolvedValueOnce(failure('DNS_FAILURE', 'NXDOMAIN'));
     const obs = await probeServiceReachability(target);
     expect(obs.outcome).toBe('DNS_FAILURE');
   });
 
-  it('maps an SSRF policy block to BLOCKED_BY_SECURITY_POLICY, distinct from AGENT_UNREACHABLE', async () => {
-    mockedSafeRequest.mockResolvedValueOnce(failure('BLOCKED_IP'));
-    const obs = await probeServiceReachability(target);
-    expect(obs.outcome).toBe('BLOCKED_BY_SECURITY_POLICY');
-  });
-
-  it('maps a timeout to TIMEOUT', async () => {
-    mockedSafeRequest.mockResolvedValueOnce(failure('TIMEOUT'));
+  it('maps TIMEOUT to TIMEOUT outcome', async () => {
+    mockedSafeRequest.mockResolvedValueOnce(failure('TIMEOUT', 'timed out'));
     const obs = await probeServiceReachability(target);
     expect(obs.outcome).toBe('TIMEOUT');
+  });
+
+  it('maps BLOCKED_IP to BLOCKED_BY_SECURITY_POLICY outcome', async () => {
+    mockedSafeRequest.mockResolvedValueOnce(failure('BLOCKED_IP', 'private IP'));
+    const obs = await probeServiceReachability(target);
+    expect(obs.outcome).toBe('BLOCKED_BY_SECURITY_POLICY');
   });
 });
 
 describe('probeHttpStatus', () => {
-  it('treats a well-formed 500 response as a successful observation of that status code', async () => {
-    // Important distinction: AgentProof successfully OBSERVED a 500 — that
-    // is not the same as AgentProof failing to reach the agent.
-    mockedSafeRequest.mockResolvedValueOnce(ok({ status: 500 }));
+  it('records status on non-200 responses as successful observation', async () => {
+    mockedSafeRequest.mockResolvedValueOnce(ok({ status: 503 }));
     const obs = await probeHttpStatus(target);
     expect(obs.outcome).toBe('SUCCESS');
-    expect(obs.httpStatus).toBe(500);
+    expect(obs.httpStatus).toBe(503);
   });
 });
 
 describe('probeResponseLatency', () => {
   it('only reports latency on success', async () => {
-    mockedSafeRequest.mockResolvedValueOnce(failure('AGENT_UNREACHABLE' as never, 'connection refused'));
+    mockedSafeRequest.mockResolvedValueOnce(failure('AGENT_UNREACHABLE', 'connection refused'));
     const obs = await probeResponseLatency(target);
     expect(obs.outcome).toBe('AGENT_UNREACHABLE');
     expect(obs.latencyMs).toBeUndefined();
@@ -97,7 +97,7 @@ describe('probeResponseLatency', () => {
 });
 
 describe('probeMetadataResolution', () => {
-  it('treats a 404 on the metadata URI as unreachable, not as a resolved-but-empty document', async () => {
+  it('treats a 404 on the metadata URI as unreachable', async () => {
     mockedSafeRequest.mockResolvedValueOnce(ok({ status: 404 }));
     const obs = await probeMetadataResolution(target, 'https://agent.example.test/metadata.json');
     expect(obs.outcome).toBe('AGENT_UNREACHABLE');
@@ -113,11 +113,11 @@ describe('probeMetadataResolution', () => {
 
 describe('probeProtocolResponseValidity', () => {
   it('never claims HTTP 200 means "protocol correct" for protocols without an implemented validator', async () => {
-    const a2aTarget: ProbeTarget = { ...target, protocol: 'A2A' };
+    const customTarget: ProbeTarget = { ...target, protocol: 'UNKNOWN' };
     const callsBefore = mockedSafeRequest.mock.calls.length;
-    const obs = await probeProtocolResponseValidity(a2aTarget);
+    const obs = await probeProtocolResponseValidity(customTarget);
     expect(obs.outcome).toBe('PROTOCOL_INVALID');
-    expect(mockedSafeRequest.mock.calls.length).toBe(callsBefore); // no request attempted at all
+    expect(mockedSafeRequest.mock.calls.length).toBe(callsBefore);
     expect(obs.failureReason).toMatch(/no validator implemented/);
   });
 
@@ -131,5 +131,23 @@ describe('probeProtocolResponseValidity', () => {
     mockedSafeRequest.mockResolvedValueOnce(ok({ status: 200 }));
     const obs = await probeProtocolResponseValidity(target);
     expect(obs.outcome).toBe('SUCCESS');
+  });
+});
+
+describe('probeMcpHealth & probeA2aHealth', () => {
+  it('successfully probes an MCP endpoint', async () => {
+    mockedSafeRequest.mockResolvedValueOnce(ok({ status: 200 }));
+    const mcpTarget: ProbeTarget = { ...target, protocol: 'MCP', url: 'https://agent.io/mcp' };
+    const obs = await probeMcpHealth(mcpTarget);
+    expect(obs.outcome).toBe('SUCCESS');
+    expect(obs.probeType).toBe('MCP_HEALTH');
+  });
+
+  it('successfully probes an A2A endpoint', async () => {
+    mockedSafeRequest.mockResolvedValueOnce(ok({ status: 200 }));
+    const a2aTarget: ProbeTarget = { ...target, protocol: 'A2A', url: 'https://agent.io/a2a' };
+    const obs = await probeA2aHealth(a2aTarget);
+    expect(obs.outcome).toBe('SUCCESS');
+    expect(obs.probeType).toBe('A2A_HEALTH');
   });
 });

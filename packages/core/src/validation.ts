@@ -1,29 +1,54 @@
 /**
- * Runtime validation boundary.
+ * Runtime validation boundary for AgentProof Sentinel.
  *
- * Rule: no external byte stream (HTTP response body, RPC result, indexer
- * JSON) may cross into AgentProof's domain model without first passing
- * through a zod schema here. TypeScript types are compile-time only and
- * prove nothing about what actually arrived over the network — a `.parse()`
- * call is what actually enforces the boundary at runtime.
- *
- * This module intentionally has ZERO knowledge of any specific external
- * source's schema (that lives in `packages/sources`, source by source).
- * It only provides the generic parsing helpers + failure-safe result type
- * that every adapter is required to use.
+ * Enforces Solana public key validation and SAID Protocol API schema validation.
  */
 
 import { z } from 'zod';
+import { PublicKey } from '@solana/web3.js';
 
 export type ValidationResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string; raw: unknown };
 
 /**
- * Parse `raw` (untyped, from the network) against `schema`. Never throws —
- * malformed external data must fail safely and become a recorded
- * `PROTOCOL_INVALID` / `UPSTREAM_INDEXER_FAILURE` observation, not an
- * unhandled exception that takes down a probe run.
+ * Validates whether a given string is a valid Solana public key on-curve.
+ * Rejects EVM (0x) addresses, non-base58 strings, and malformed public keys.
+ */
+export function isValidSolanaAddress(address: unknown): address is string {
+  if (typeof address !== 'string' || address.trim().length === 0) {
+    return false;
+  }
+  const clean = address.trim();
+  // Explicitly reject EVM 0x addresses
+  if (clean.startsWith('0x') || clean.startsWith('0X')) {
+    return false;
+  }
+  // Solana Base58 public keys are between 32 and 44 characters
+  if (clean.length < 32 || clean.length > 44) {
+    return false;
+  }
+  try {
+    const pubkey = new PublicKey(clean);
+    return PublicKey.isOnCurve(pubkey.toBuffer());
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Zod schema for a validated Solana public key.
+ */
+export const solanaAddressSchema = z
+  .string()
+  .trim()
+  .refine(isValidSolanaAddress, {
+    message: 'Invalid Solana public key (must be valid on-curve Base58 address)',
+  });
+
+/**
+ * Parse `raw` against `schema`. Never throws — external data parsing failures
+ * become safe validation results.
  */
 export function parseExternal<T>(schema: z.ZodType<T>, raw: unknown): ValidationResult<T> {
   const result = schema.safeParse(raw);
@@ -40,8 +65,7 @@ export function parseExternal<T>(schema: z.ZodType<T>, raw: unknown): Validation
 }
 
 /**
- * Parse a raw JSON string (e.g. an HTTP response body) safely: JSON.parse
- * failures are treated the same as schema-validation failures, not thrown.
+ * Parse a raw JSON string safely.
  */
 export function parseExternalJsonText<T>(
   schema: z.ZodType<T>,
@@ -61,44 +85,95 @@ export function parseExternalJsonText<T>(
 }
 
 // ---------------------------------------------------------------------------
-// Generic ERC-8004-style agent metadata schema.
-//
-// IMPORTANT: this schema is written from the public ERC-8004 metadata
-// convention description in the build prompt (agents may declare either
-// "services" (current) or "endpoints" (legacy)). It has NOT been validated
-// against a real, network-fetched 8004scan or onchain-metadata response in
-// this environment, because that network access is blocked here (see
-// docs/ENVIRONMENT_BASELINE.md). Treat this schema as UNVERIFIED /
-// best-effort until it has been exercised against real responses from an
-// unrestricted environment, and update it then.
+// SAID Protocol API Schemas
+// Documented endpoints:
+// - GET /api/agents
+// - GET /api/agents/:wallet
+// - GET /api/verify/:wallet
+// - GET /api/trust/:wallet
+// - GET /api/screen?wallet=WALLET_ADDRESS
 // ---------------------------------------------------------------------------
 
-const rawServiceSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().optional(),
-  type: z.string().optional(),
-  protocol: z.string().optional(),
-  url: z.string().optional(),
-  endpoint: z.string().optional(),
-});
-
-const rawEndpointSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().optional(),
-  type: z.string().optional(),
-  url: z.string().optional(),
-  endpoint: z.string().optional(),
-});
-
-export const rawAgentMetadataSchema = z
+export const rawSaidAgentSchema = z
   .object({
+    wallet: z.string().optional(),
+    walletAddress: z.string().optional(),
+    address: z.string().optional(),
     name: z.string().optional(),
-    description: z.string().optional(),
-    services: z.array(rawServiceSchema).optional(),
-    endpoints: z.array(rawEndpointSchema).optional(),
+    description: z.string().nullable().optional(),
+    isVerified: z.boolean().optional(),
+    verified: z.boolean().optional(),
+    verificationStatus: z.string().optional(),
+    trustTier: z.string().optional(),
+    reputationScore: z.number().optional(),
+    skills: z.array(z.string()).optional(),
+    serviceTypes: z.array(z.string()).optional(),
+    website: z.string().nullable().optional(),
+    mcpEndpoint: z.string().nullable().optional(),
+    a2aEndpoint: z.string().nullable().optional(),
+    endpoints: z.record(z.string(), z.string()).optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
   })
-  .passthrough(); // unknown extra fields are preserved but not trusted/used
+  .passthrough();
 
-export type RawAgentMetadata = z.infer<typeof rawAgentMetadataSchema>;
+export type RawSaidAgent = z.infer<typeof rawSaidAgentSchema>;
 
-export { rawServiceSchema, rawEndpointSchema };
+export const rawSaidAgentsListResponseSchema = z
+  .object({
+    success: z.boolean().optional(),
+    data: z.array(rawSaidAgentSchema).optional(),
+    agents: z.array(rawSaidAgentSchema).optional(),
+    pagination: z
+      .object({
+        page: z.number().optional(),
+        limit: z.number().optional(),
+        total: z.number().optional(),
+        hasMore: z.boolean().optional(),
+        nextCursor: z.string().optional(),
+      })
+      .optional(),
+  })
+  .passthrough();
+
+export const rawSaidVerifyResponseSchema = z
+  .object({
+    verified: z.boolean().optional(),
+    isVerified: z.boolean().optional(),
+    status: z.string().optional(),
+    wallet: z.string().optional(),
+    tier: z.string().optional(),
+    registeredAt: z.string().optional(),
+    badgeUrl: z.string().optional(),
+  })
+  .passthrough();
+
+export const rawSaidTrustResponseSchema = z
+  .object({
+    wallet: z.string().optional(),
+    tier: z.string().optional(),
+    trustTier: z.string().optional(),
+    reputationScore: z.number().optional(),
+    score: z.number().optional(),
+    eigenTrust: z.number().optional(),
+    reviewCount: z.number().optional(),
+    positivePercentage: z.number().optional(),
+  })
+  .passthrough();
+
+export const rawSaidTrustScreenResponseSchema = z
+  .object({
+    wallet: z.string().optional(),
+    verdict: z.enum(['allow', 'review', 'caution']).or(z.string()).optional(),
+    score: z.number().optional(),
+    dimensions: z
+      .object({
+        reliability: z.number().optional(),
+        transactionCount: z.number().optional(),
+        disputeRate: z.number().optional(),
+        tenureDays: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();

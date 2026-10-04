@@ -1,6 +1,14 @@
-# BNB Grant Evidence Ledger
+# BNB Grant Evidence Ledger (Legacy Archive)
 
-Every claim AgentProof might make in a grant application, with its actual
+> [!NOTE]
+> **Legacy Archive**: This document records historical development from the original BNB prototype before the project was transformed into **AgentProof Sentinel** for the **SAID Protocol** on **Solana Mainnet**.
+> For current Solana architecture, grant readiness, and roadmap, refer to:
+> - [`GRANT_READINESS.md`](../GRANT_READINESS.md)
+> - [`GRANT_ROADMAP.md`](../GRANT_ROADMAP.md)
+> - [`MIGRATION_AUDIT.md`](../MIGRATION_AUDIT.md)
+> - [`README.md`](../README.md)
+
+Every claim AgentProof originally made in a BNB grant application, with its actual
 evidence and status. A claim never moves to `PASS` without a concrete,
 checkable artifact (a file, a test result, a live URL). This ledger is
 part of the product, not marketing copy.

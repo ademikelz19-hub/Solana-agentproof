@@ -12,8 +12,11 @@
   },
   "dependencies": {
     "@agentproof/core": "0.1.0",
+    "@agentproof/db": "0.1.0",
     "@agentproof/reliability": "0.1.0",
     "@agentproof/reputation": "0.1.0",
+    "@agentproof/sources": "0.1.0",
+    "@solana/web3.js": "^1.98.0",
     "dotenv": "^17.4.2",
     "lucide-react": "^1.37.0",
     "next": "^15.2.0",

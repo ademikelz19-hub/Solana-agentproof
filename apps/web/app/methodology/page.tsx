@@ -12,7 +12,10 @@ import {
   FileText,
   Clock,
   Zap,
+  Radio,
+  Cpu,
 } from 'lucide-react';
+import { SAID_PROGRAM_ID } from '@agentproof/core';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,142 +23,128 @@ export default function MethodologyPage() {
   return (
     <PageShell>
       {/* Header */}
-      <div style={{ marginBottom: '2.5rem', maxWidth: 800 }}>
+      <div style={{ marginBottom: '2.5rem', maxWidth: 840 }}>
         <div
           style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: '0.4rem',
             padding: '0.2rem 0.65rem',
-            background: 'var(--accent-bnb-subtle)',
-            border: '1px solid var(--accent-bnb-border)',
+            background: 'var(--accent-solana-subtle)',
+            border: '1px solid var(--accent-solana-border)',
             borderRadius: 4,
             fontSize: '0.72rem',
             fontFamily: 'var(--font-mono)',
-            color: 'var(--accent-bnb)',
+            color: 'var(--accent-solana)',
             marginBottom: '0.75rem',
           }}
         >
           <BookOpen size={12} />
-          <span>TECHNICAL SPECIFICATION • V0.1.0</span>
+          <span>TECHNICAL SPECIFICATION • SENTINEL METHODOLOGY V1.0</span>
         </div>
 
         <h1
           style={{
-            fontSize: '2rem',
+            fontSize: '2.2rem',
             fontWeight: 800,
-            letterSpacing: '-0.02em',
+            letterSpacing: '-0.025em',
             marginBottom: '0.75rem',
             color: 'var(--text-primary)',
           }}
         >
-          Transparent Reliability Methodology
+          Sentinel Reliability Methodology &amp; Mathematical Specification
         </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: 1.6 }}>
-          AgentProof measures autonomous onchain agents using deterministic, reproducible formulas and SSRF-hardened network probes. Every metric displayed in our Passports and API traces directly back to the mechanisms documented below.
+        <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', lineHeight: 1.6 }}>
+          AgentProof Sentinel evaluates autonomous AI agents on Solana using deterministic, explainable mathematical formulas and SSRF-hardened network probes. Every metric displayed in our Passports and API traces directly back to the mechanisms documented below.
         </p>
       </div>
 
       {/* 1. Identity vs. Operability */}
       <section id="identity-vs-operability" className="card" style={{ padding: '1.75rem', marginBottom: '2rem', scrollMarginTop: '2rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-          <Shield size={20} color="var(--accent-bnb)" />
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            1. Identity vs. Runtime Operability
+          <Shield size={20} color="var(--accent-solana)" />
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            1. SAID Identity vs. Sentinel Operational Reliability
           </h2>
         </div>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '0.75rem' }}>
-          Onchain standards such as <strong>ERC-8004</strong> prove that an agent identity exists and was minted on BNB Chain. However, onchain registration says nothing about whether the advertised service, API endpoint, or agent-to-agent protocol is currently reachable or operational.
+          On Solana, <strong>SAID Protocol</strong> (<code className="font-mono">{SAID_PROGRAM_ID}</code>) establishes an agent’s persistent identity, verified ownership wallet, protocol trust tier, and credentialed skills. However, identity alone cannot guarantee runtime availability:
         </p>
+
         <div
           style={{
-            padding: '1rem',
+            padding: '1rem 1.25rem',
             background: 'var(--bg-surface-2)',
             borderRadius: 6,
-            fontSize: '0.85rem',
+            fontSize: '0.875rem',
             color: 'var(--text-primary)',
-            borderLeft: '3px solid var(--accent-bnb)',
+            borderLeft: '3px solid var(--accent-solana)',
+            lineHeight: 1.6,
           }}
         >
-          <strong>Core Principle:</strong> AgentProof treats onchain registration exclusively as an identity declaration, never as evidence of operational uptime. Runtime reliability is continuously and independently measured.
+          <strong>The Decoupling Rule:</strong> Sentinel never creates arbitrary "trust" or "reputation" scores that could be confused with SAID's official reputation. SAID tells you <em>who</em> an agent is and its community trust tier. Sentinel provides continuous, independent operational evidence showing whether the agent's published service endpoints (MCP tools, A2A endpoints, HTTP APIs) are actually alive and responsive.
         </div>
       </section>
 
-      {/* 2. The 5 Deterministic Probes */}
+      {/* 2. The 3 Monitored Service Endpoints */}
       <section id="deterministic-probes" className="card" style={{ padding: '1.75rem', marginBottom: '2rem', scrollMarginTop: '2rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
           <Activity size={20} color="var(--status-strong)" />
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            2. The 5 Deterministic Probe Types
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            2. Monitored Service Protocols &amp; Probes
           </h2>
         </div>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1.25rem' }}>
-          Autonomous probes execute against agent services on a scheduled cadence using our hardened probe engine:
+          Sentinel monitors <strong>only explicitly published service endpoints</strong> declared in the agent's SAID record. Sentinel never probes arbitrary third-party websites:
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
           <div style={{ padding: '1rem', background: 'var(--bg-surface-2)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>
-              <span className="font-mono" style={{ color: 'var(--accent-bnb)', fontSize: '0.8rem' }}>01</span>
-              <span>METADATA_RESOLUTION</span>
+              <span className="font-mono" style={{ color: '#00f0ff', fontSize: '0.8rem' }}>01</span>
+              <span>MCP_HEALTH (Model Context Protocol)</span>
             </div>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Resolves the agent&apos;s advertised metadata URI over HTTP(S) or IPFS gateways, enforcing strict 1MB response size limits.
+              Tests declared MCP tool endpoints using lightweight ping/health JSON-RPC queries. Measures tool reachability, valid schema responses, and round-trip execution latency.
             </p>
           </div>
 
           <div style={{ padding: '1rem', background: 'var(--bg-surface-2)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>
-              <span className="font-mono" style={{ color: 'var(--accent-bnb)', fontSize: '0.8rem' }}>02</span>
-              <span>SERVICE_REACHABILITY</span>
+              <span className="font-mono" style={{ color: 'var(--accent-solana)', fontSize: '0.8rem' }}>02</span>
+              <span>A2A_HEALTH (Agent-to-Agent Endpoint)</span>
             </div>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Executes DNS resolution and TCP/TLS handshake with DNS pinning to verify that the host is reachable from public IP networks.
+              Evaluates agent-to-agent communication interfaces. Verifies handshake availability, protocol spec compliance, and response timing.
             </p>
           </div>
 
           <div style={{ padding: '1rem', background: 'var(--bg-surface-2)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>
-              <span className="font-mono" style={{ color: 'var(--accent-bnb)', fontSize: '0.8rem' }}>03</span>
-              <span>HTTP_STATUS</span>
+              <span className="font-mono" style={{ color: '#818cf8', fontSize: '0.8rem' }}>03</span>
+              <span>HTTP_REACHABILITY (Service APIs)</span>
             </div>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Checks that the endpoint returns standard valid HTTP response codes (2xx/3xx/405/422). 5xx errors or connection drops record as failure.
+              Monitors public HTTP/REST endpoints advertised by the agent. Enforces strict 8-second timeouts and logs HTTP response codes (2xx/3xx/405/422).
             </p>
           </div>
+        </div>
 
-          <div style={{ padding: '1rem', background: 'var(--bg-surface-2)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>
-              <span className="font-mono" style={{ color: 'var(--accent-bnb)', fontSize: '0.8rem' }}>04</span>
-              <span>RESPONSE_LATENCY</span>
-            </div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Measures high-resolution round-trip time in milliseconds (median and P95 percentiles) from probe dispatch to header arrival.
-            </p>
-          </div>
-
-          <div style={{ padding: '1rem', background: 'var(--bg-surface-2)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>
-              <span className="font-mono" style={{ color: 'var(--accent-bnb)', fontSize: '0.8rem' }}>05</span>
-              <span>PROTOCOL_RESPONSE_VALIDITY</span>
-            </div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-              Validates that the returned payload adheres to expected MIME types and JSON structure without malformed syntax.
-            </p>
-          </div>
+        <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'var(--bg-surface-3)', borderRadius: 6, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          <strong>Probing Cadence &amp; Ethics:</strong> Default monitoring interval is <strong>5 minutes</strong> with an <strong>8-second timeout</strong>. Concurrency is limited to prevent server overload, and exponential backoff is triggered upon repeated consecutive failures.
         </div>
       </section>
 
-      {/* 3. Reliability Calculations */}
-      <section id="measured-availability" className="card" style={{ padding: '1.75rem', marginBottom: '2rem', scrollMarginTop: '2rem' }}>
+      {/* 3. Sentinel Reliability Score Formula */}
+      <section id="sentinel-score" className="card" style={{ padding: '1.75rem', marginBottom: '2rem', scrollMarginTop: '2rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-          <Zap size={20} color="var(--status-limited)" />
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            3. Availability &amp; Latency Formulas
+          <Zap size={20} color="var(--accent-solana)" />
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            3. The Sentinel Reliability Score (0–100) Formula
           </h2>
         </div>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1rem' }}>
-          Measured Availability is computed over explicit sliding windows (<strong>24 Hours</strong>, <strong>7 Days</strong>, and <strong>30 Days</strong>):
+          The Sentinel Reliability Score is an explainable, deterministic operational index. It is never hidden behind an unexplainable neural net or arbitrary marketing score:
         </p>
 
         <div
@@ -164,158 +153,145 @@ export default function MethodologyPage() {
             background: 'var(--bg-surface-2)',
             borderRadius: 6,
             fontFamily: 'var(--font-mono)',
-            fontSize: '0.875rem',
+            fontSize: '0.9rem',
             marginBottom: '1.25rem',
             overflowX: 'auto',
+            border: '1px solid var(--border-medium)',
           }}
         >
-          Measured Availability % = ( Successful Attributable Probes / Total Attributable Probes ) * 100
+          Sentinel Score = (Availability × 50%) + (Latency × 25%) + (Coverage × 15%) + (Stability × 10%)
         </div>
 
-        <h3 id="attributable-outcomes" style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)', scrollMarginTop: '2rem' }}>
-          Attributable vs. Excluded Outcomes
-        </h3>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '0.75rem' }}>
-          To guarantee rigorous fairness, AgentProof partitions probe outcomes into two strict categories:
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+          <div style={{ padding: '0.85rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
+            <strong style={{ color: 'var(--status-success)', display: 'block', fontSize: '0.85rem' }}>Availability (50%)</strong>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Combination of 24-hour uptime (weight 0.6) and 7-day uptime (weight 0.4). High uptime directly secures base points.
+            </span>
+          </div>
+
+          <div style={{ padding: '0.85rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
+            <strong style={{ color: '#00f0ff', display: 'block', fontSize: '0.85rem' }}>Latency (25%)</strong>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Normalized median latency score. &lt;300ms receives full points; degrades linearly to 0 at &gt;3,000ms.
+            </span>
+          </div>
+
+          <div style={{ padding: '0.85rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
+            <strong style={{ color: '#818cf8', display: 'block', fontSize: '0.85rem' }}>Coverage (15%)</strong>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Observation sample depth. 20+ checks over sliding window unlock maximum coverage points.
+            </span>
+          </div>
+
+          <div style={{ padding: '0.85rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
+            <strong style={{ color: 'var(--status-strong)', display: 'block', fontSize: '0.85rem' }}>Stability (10%)</strong>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Penalty deducted for consecutive failures or active unresolved downtime incidents.
+            </span>
+          </div>
+        </div>
+
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', margin: 0 }}>
+          Display designation: "Operational reliability measured by AgentProof Sentinel." Never displayed as "Official SAID score."
         </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-          <div style={{ padding: '1rem', background: 'var(--bg-surface-2)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
-            <strong style={{ color: 'var(--status-success)', display: 'block', marginBottom: '0.4rem' }}>
-              ✓ Attributable Outcomes (Count in Denominator)
-            </strong>
-            <ul style={{ paddingLeft: '1.1rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-              <li><code className="font-mono">SUCCESS</code>: Endpoint responded within parameters.</li>
-              <li><code className="font-mono">AGENT_UNREACHABLE</code>: Agent server dropped connection or refused TCP.</li>
-              <li><code className="font-mono">DNS_FAILURE</code>: Agent hostname failed public resolution.</li>
-              <li><code className="font-mono">TIMEOUT</code>: Agent service exceeded the 10-second timeout.</li>
-              <li><code className="font-mono">PROTOCOL_INVALID</code>: Agent returned HTTP 5xx or malformed payload.</li>
-            </ul>
-          </div>
-
-          <div style={{ padding: '1rem', background: 'var(--bg-surface-2)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
-            <strong style={{ color: '#94a3b8', display: 'block', marginBottom: '0.4rem' }}>
-              ⊘ Excluded Outcomes (Never Penalize Availability)
-            </strong>
-            <ul style={{ paddingLeft: '1.1rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-              <li><code className="font-mono">BLOCKED_BY_SECURITY_POLICY</code>: Target was an RFC1918/localhost IP blocked by runner security policy.</li>
-              <li><code className="font-mono">UPSTREAM_INDEXER_FAILURE</code>: 8004scan or RPC gateway was unavailable.</li>
-              <li><code className="font-mono">AGENTPROOF_INTERNAL_ERROR</code>: Runner internal execution error.</li>
-            </ul>
-          </div>
-        </div>
       </section>
 
-      {/* 4. Evidence Sufficiency Tiers */}
-      <section id="evidence-coverage" className="card" style={{ padding: '1.75rem', marginBottom: '2rem', scrollMarginTop: '2rem' }}>
+      {/* 4. Availability Windows & Sufficiency */}
+      <section id="measured-availability" className="card" style={{ padding: '1.75rem', marginBottom: '2rem', scrollMarginTop: '2rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-          <FileText size={20} color="var(--status-moderate)" />
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            4. Evidence Sufficiency Tiers
+          <Clock size={20} color="var(--status-limited)" />
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            4. Measured Availability &amp; Sufficiency Tiers
           </h2>
         </div>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1.25rem' }}>
-          Every reliability percentage is paired with an explicit sufficiency tier that communicates sample depth:
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1rem' }}>
+          Measured Availability % is computed strictly from attributable service probes over sliding windows (24h, 7d, 30d):
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
+        <div
+          style={{
+            padding: '1rem',
+            background: 'var(--bg-surface-2)',
+            borderRadius: 6,
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.85rem',
+            marginBottom: '1rem',
+          }}
+        >
+          Availability % = ( Successful Attributable Checks / Total Attributable Checks ) × 100
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.65rem 0.85rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
             <SufficiencyBadge tier="STRONG" />
             <span style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
               30+ observations spanning at least 75% of the window duration. Statistically robust sample.
             </span>
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.65rem 0.85rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
             <SufficiencyBadge tier="MODERATE" />
             <span style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
               10–29 observations with regular temporal spread. Representative operational profile.
             </span>
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.65rem 0.85rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
             <SufficiencyBadge tier="LIMITED" />
             <span style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
               3–9 observations. Early measurement history; displayed with preliminary sample notice.
             </span>
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.65rem 0.85rem', background: 'var(--bg-surface-2)', borderRadius: 6 }}>
             <SufficiencyBadge tier="INSUFFICIENT" />
             <span style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-              Fewer than 3 observations. Availability percentage is intentionally withheld to prevent unrepresentative conclusions.
+              Fewer than 3 observations. Availability percentage is withheld ("Insufficient history") to prevent misleading metrics.
             </span>
           </div>
         </div>
       </section>
 
-      {/* 5. Reputation Integrity */}
-      <section id="reputation-integrity" className="card" style={{ padding: '1.75rem', marginBottom: '2rem', scrollMarginTop: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-          <Layers size={20} color="var(--accent-bnb)" />
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            5. Onchain Reputation Evidence &amp; Reviewer Distribution
-          </h2>
-        </div>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1rem' }}>
-          AgentProof analyzes 8004scan onchain feedback data to evaluate reviewer diversity and concentration using non-accusatory statistical metrics:
-        </p>
-
-        <ul style={{ paddingLeft: '1.25rem', fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-          <li>
-            <strong>Herfindahl-Hirschman Reviewer Concentration (HHI):</strong> Measures whether feedback is dominated by a small number of wallet addresses.
-          </li>
-          <li>
-            <strong>Reviewer Diversity Ratio:</strong> The fraction of total feedback records submitted by unique wallets (<code className="font-mono">uniqueReviewers / totalFeedback</code>).
-          </li>
-          <li>
-            <strong>Neutral Signal Taxonomy:</strong> Signals such as <code className="font-mono">LOW_REVIEWER_DIVERSITY</code> or <code className="font-mono">HIGH_REVIEWER_CONCENTRATION</code> describe empirical distribution shapes without subjective accusations or blacklisting.
-          </li>
-        </ul>
-      </section>
-
-      {/* 6. Security & SSRF Protections */}
+      {/* 5. Security & SSRF Protections */}
       <section id="probe-policy" className="card" style={{ padding: '1.75rem', marginBottom: '2rem', scrollMarginTop: '2rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
           <Lock size={20} color="var(--status-strong)" />
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            6. Security &amp; Probe Policy
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            5. Security &amp; Adversarial IP Policy
           </h2>
         </div>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1rem' }}>
-          Probing arbitrary third-party endpoints carries inherent SSRF risks. AgentProof implements strict security controls tested by 36 adversarial IP-policy tests:
+          Probing arbitrary agent-provided URLs presents serious SSRF risks. Sentinel implements strict transport safety layers tested against 36 adversarial test vectors:
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
           <div style={{ padding: '0.85rem', background: 'var(--bg-surface-2)', borderRadius: 6, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
             <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '0.2rem' }}>DNS Pinning</strong>
-            Resolves IP once and connects strictly to verified public IP addresses, preventing DNS rebinding attacks.
+            Resolves hostname prior to connection and binds to the resolved public IP, preventing DNS rebinding.
           </div>
           <div style={{ padding: '0.85rem', background: 'var(--bg-surface-2)', borderRadius: 6, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '0.2rem' }}>RFC1918 &amp; Cloud Blocklist</strong>
-            Immediately terminates probes targeting 10.x, 172.16.x, 192.168.x, 127.0.0.1, or 169.254.169.254 (AWS/GCP metadata).
+            <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '0.2rem' }}>Private IP Blocklist</strong>
+            Terminates probes targeting RFC1918 (10.x, 172.16.x, 192.168.x), localhost (127.0.0.1), and cloud metadata (169.254.169.254).
           </div>
           <div style={{ padding: '0.85rem', background: 'var(--bg-surface-2)', borderRadius: 6, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '0.2rem' }}>Ethical Rate Limiting</strong>
-            Global concurrency cap (10), per-host cap (2), minimum 5-second interval, and automatic cooldown backoff.
+            <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '0.2rem' }}>Response Safety Caps</strong>
+            Enforces 1MB maximum payload limits and disables dangerous protocol schemes (e.g. file://, gopher://).
           </div>
         </div>
       </section>
 
-      {/* 7. Explicit Limitations */}
+      {/* 6. Explicit Boundaries */}
       <section id="limitations" className="card" style={{ padding: '1.75rem', scrollMarginTop: '2rem' }}>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
-          7. Explicit Limitations &amp; Boundaries
+        <h2 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '0.75rem', color: 'var(--text-primary)' }}>
+          6. Explicit Boundaries &amp; Non-Assumptions
         </h2>
         <ul style={{ paddingLeft: '1.25rem', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.8 }}>
           <li>
-            <strong>Reachability is not correctness:</strong> A successful HTTP 200 response proves the agent&apos;s server is online, not that its internal AI reasoning or financial transactions are bug-free.
+            <strong>Reachability is not semantic correctness:</strong> A 200 OK proves the agent server is alive and responding, not that its trade execution or reasoning is financially sound.
           </li>
           <li>
-            <strong>Append-only application level:</strong> Observations are append-only at the application layer. Proofs are not yet committed to zero-knowledge rollups.
+            <strong>No fake reputation or feedback:</strong> Sentinel never auto-submits feedback or manipulates SAID reputation.
           </li>
           <li>
-            <strong>No financial guarantees:</strong> AgentProof evidence is an informational metric for builders, orchestrators, and indexers.
+            <strong>Server-side only signing:</strong> Sentinel wallets never expose private keys to client browsers.
           </li>
         </ul>
       </section>

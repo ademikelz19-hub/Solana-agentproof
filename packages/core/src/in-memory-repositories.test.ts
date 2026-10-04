@@ -1,38 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import type { ProbeObservation } from './domain';
-import { InMemoryObservationRepository } from './in-memory-repositories';
+import type { AgentIdentity, ProbeObservation } from './domain';
+import {
+  InMemoryAgentRepository,
+  InMemoryIncidentRepository,
+  InMemoryObservationRepository,
+} from './in-memory-repositories';
+
+const TEST_WALLET = '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G';
+const TEST_AGENT_ID = `solana:${TEST_WALLET}`;
 
 function makeObservation(id: string, timestamp: string): ProbeObservation {
   return {
     id,
-    agentId: 'bsc:1',
-    chain: 'bsc',
+    agentId: TEST_AGENT_ID,
+    chain: 'solana',
     serviceId: 'svc-1',
     probeType: 'SERVICE_REACHABILITY',
     timestamp,
     outcome: 'SUCCESS',
-    provenance: { source: 'AGENTPROOF_MEASUREMENT', origin: 'test', observedAt: timestamp },
-    probeVersion: '0.1.0',
-    methodologyVersion: '0.1.0',
+    provenance: { source: 'AGENTPROOF_SENTINEL_MEASUREMENT', origin: 'test', observedAt: timestamp },
+    probeVersion: '0.2.0-solana',
+    methodologyVersion: '0.2.0-sentinel',
   };
 }
 
-describe('ObservationRepository — append-only enforcement', () => {
-  it('has no update/delete method on the interface — recordObservation only ever appends', async () => {
+describe('ObservationRepository — append-only enforcement on Solana', () => {
+  it('has no update/delete method — recordObservation only appends', async () => {
     const repo = new InMemoryObservationRepository();
     await repo.recordObservation(makeObservation('o1', '2026-08-01T00:00:00.000Z'));
-    await repo.recordObservation(makeObservation('o1', '2026-08-02T00:00:00.000Z')); // same id, later timestamp
+    await repo.recordObservation(makeObservation('o1', '2026-08-02T00:00:00.000Z'));
 
     const page = await repo.listObservations({
-      agentId: 'bsc:1',
+      agentId: TEST_AGENT_ID,
       since: '2026-01-01T00:00:00.000Z',
       until: '2026-12-31T00:00:00.000Z',
       limit: 10,
     });
 
-    // Both rows exist — the second call did not overwrite the first. This
-    // is what "append-only" means at the application layer: there is no
-    // code path that could have replaced the earlier row even by accident.
     expect(page.items).toHaveLength(2);
   });
 
@@ -43,7 +47,7 @@ describe('ObservationRepository — append-only enforcement', () => {
     await repo.recordObservation(makeObservation('o3', '2026-08-02T00:00:00.000Z'));
 
     const page = await repo.listObservations({
-      agentId: 'bsc:1',
+      agentId: TEST_AGENT_ID,
       since: '2026-01-01T00:00:00.000Z',
       until: '2026-12-31T00:00:00.000Z',
       limit: 10,
@@ -52,53 +56,60 @@ describe('ObservationRepository — append-only enforcement', () => {
   });
 });
 
-describe('ObservationRepository — pagination', () => {
-  it('paginates with a cursor and reports nextCursor only when more remain', async () => {
-    const repo = new InMemoryObservationRepository();
-    for (let i = 0; i < 5; i++) {
-      await repo.recordObservation(makeObservation(`o${i}`, `2026-08-0${i + 1}T00:00:00.000Z`));
-    }
+describe('AgentRepository & IncidentRepository', () => {
+  it('stores and retrieves SAID Solana agents', async () => {
+    const repo = new InMemoryAgentRepository();
+    const agent: AgentIdentity = {
+      id: TEST_AGENT_ID,
+      chain: 'solana',
+      walletAddress: TEST_WALLET,
+      name: 'Sentinel Agent',
+      verificationStatus: 'VERIFIED',
+      trustTier: 'TIER_1',
+      skills: ['monitoring', 'reliability'],
+      serviceTypes: ['A2A', 'MCP'],
+      firstSeenAt: new Date().toISOString(),
+      lastSyncedAt: new Date().toISOString(),
+      isMonitored: true,
+      provenance: {
+        source: 'SAID_PROTOCOL',
+        origin: 'said-indexer',
+        observedAt: new Date().toISOString(),
+      },
+    };
 
-    const firstPage = await repo.listObservations({
-      agentId: 'bsc:1',
-      since: '2026-01-01T00:00:00.000Z',
-      until: '2026-12-31T00:00:00.000Z',
-      limit: 2,
-    });
-    expect(firstPage.items).toHaveLength(2);
-    expect(firstPage.nextCursor).toBeDefined();
-
-    const secondPage = await repo.listObservations({
-      agentId: 'bsc:1',
-      since: '2026-01-01T00:00:00.000Z',
-      until: '2026-12-31T00:00:00.000Z',
-      limit: 2,
-      cursor: firstPage.nextCursor,
-    });
-    expect(secondPage.items).toHaveLength(2);
-
-    const thirdPage = await repo.listObservations({
-      agentId: 'bsc:1',
-      since: '2026-01-01T00:00:00.000Z',
-      until: '2026-12-31T00:00:00.000Z',
-      limit: 2,
-      cursor: secondPage.nextCursor,
-    });
-    expect(thirdPage.items).toHaveLength(1);
-    expect(thirdPage.nextCursor).toBeUndefined(); // no more pages
+    await repo.upsertAgent(agent);
+    const retrieved = await repo.getAgent(TEST_WALLET);
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.name).toBe('Sentinel Agent');
+    expect(retrieved?.verificationStatus).toBe('VERIFIED');
   });
 
-  it('scopes to the requested time window', async () => {
-    const repo = new InMemoryObservationRepository();
-    await repo.recordObservation(makeObservation('old', '2020-01-01T00:00:00.000Z'));
-    await repo.recordObservation(makeObservation('recent', '2026-08-01T00:00:00.000Z'));
+  it('records and resolves incidents with duration tracking', async () => {
+    const incidentRepo = new InMemoryIncidentRepository();
+    const started = '2026-10-03T10:00:00.000Z';
+    const resolved = '2026-10-03T10:15:00.000Z';
 
-    const page = await repo.listObservations({
-      agentId: 'bsc:1',
-      since: '2026-01-01T00:00:00.000Z',
-      until: '2026-12-31T00:00:00.000Z',
-      limit: 10,
+    await incidentRepo.recordIncident({
+      id: 'inc-1',
+      agentId: TEST_AGENT_ID,
+      serviceId: 'svc-1',
+      status: 'OPEN',
+      startedAt: started,
+      failureReason: 'Endpoint timed out (8000ms exceeded)',
+      consecutiveFailures: 3,
+      failedChecksCount: 3,
     });
-    expect(page.items.map((o) => o.id)).toEqual(['recent']);
+
+    expect(await incidentRepo.countActiveIncidents()).toBe(1);
+    const active = await incidentRepo.getActiveIncident(TEST_AGENT_ID);
+    expect(active?.status).toBe('OPEN');
+
+    await incidentRepo.resolveIncident('inc-1', resolved, resolved);
+    expect(await incidentRepo.countActiveIncidents()).toBe(0);
+
+    const incidents = await incidentRepo.listIncidents(TEST_AGENT_ID);
+    expect(incidents[0]?.status).toBe('RESOLVED');
+    expect(incidents[0]?.durationSeconds).toBe(900); // 15 minutes = 900 seconds
   });
 });

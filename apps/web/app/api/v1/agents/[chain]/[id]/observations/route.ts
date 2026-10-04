@@ -18,9 +18,9 @@ export async function GET(
     return apiError('VALIDATION_ERROR', pagination.error);
   }
 
-  const agent = await agentRepository.getAgent(parsed.value.chain, parsed.value.id);
+  const agent = await agentRepository.getAgent(parsed.value.id);
   if (!agent) {
-    return apiError('NOT_FOUND', `No agent ${parsed.value.id} on chain ${parsed.value.chain}`);
+    return apiError('NOT_FOUND', `No agent ${parsed.value.id} on Solana Mainnet`);
   }
 
   const since = request.nextUrl.searchParams.get('since') ?? new Date(0).toISOString();

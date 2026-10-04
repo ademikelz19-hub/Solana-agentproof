@@ -1,6 +1,8 @@
-import { agentRepository } from '@/lib/api/repositories';
+import { agentRepository, saidAdapter } from '@/lib/api/repositories';
 import { apiError, apiOk } from '@/lib/api/response';
 import { parseAgentParams } from '@/lib/api/agent-params';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   _request: Request,
@@ -11,11 +13,29 @@ export async function GET(
     return apiError('VALIDATION_ERROR', parsed.error);
   }
 
-  const agent = await agentRepository.getAgent(parsed.value.chain, parsed.value.id);
-  if (!agent) {
-    return apiError('NOT_FOUND', `No agent ${parsed.value.id} on chain ${parsed.value.chain}`);
-  }
-  const metadata = await agentRepository.getMetadata(agent.id);
+  let agent = await agentRepository.getAgent(parsed.value.id);
 
-  return apiOk({ identity: agent, metadata }, { cacheSeconds: 30 });
+  // If not found in DB, try on-demand live lookup from SAID Protocol
+  if (!agent) {
+    const liveLookup = await saidAdapter.getAgentDetails(parsed.value.id);
+    if (liveLookup.ok) {
+      await agentRepository.upsertAgent(
+        liveLookup.data.identity,
+        liveLookup.data.metadata,
+        liveLookup.data.services,
+      );
+      agent = liveLookup.data.identity;
+    }
+  }
+
+  if (!agent) {
+    return apiError('NOT_FOUND', `No SAID agent found for wallet ${parsed.value.id} on Solana Mainnet`);
+  }
+
+  const [metadata, services] = await Promise.all([
+    agentRepository.getMetadata(agent.id),
+    agentRepository.getServices(agent.id),
+  ]);
+
+  return apiOk({ identity: agent, metadata, services }, { cacheSeconds: 30 });
 }

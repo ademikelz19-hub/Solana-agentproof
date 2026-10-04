@@ -1,14 +1,15 @@
 /**
- * Reliability engine (build prompt Phase E).
+ * Reliability engine for AgentProof Sentinel.
  *
- * Pure functions of `(ProbeObservation[]) -> ReliabilityWindow`. No I/O —
- * callers (API routes, future dashboards) fetch observations via
- * `ObservationRepository` and pass them in here. This is what makes the
- * formulas independently testable and reproducible: given the same
- * observation rows, this always produces the same result.
+ * Pure functions: `(ProbeObservation[]) -> ReliabilityWindow`.
+ * No network I/O — deterministic, reproducible, and verifiable.
  *
- * Full formula documentation lives in docs/RELIABILITY_METHODOLOGY.md —
- * keep that file in sync with any change here.
+ * Calculates factual operational metrics:
+ * - 24h, 7d, 30d uptime availability %
+ * - Median, average, and P95 latency
+ * - Consecutive failure tracking
+ * - Evidence sufficiency classifications
+ * - Transparent Sentinel Reliability Score (0-100)
  */
 
 import {
@@ -18,13 +19,9 @@ import {
   type ProbeOutcome,
   type ReliabilityWindow,
   type ReliabilityWindowSize,
+  type SentinelReliabilityScore,
 } from '@agentproof/core';
 
-/**
- * Outcomes that are evidence ABOUT THE AGENT's service (it was reachable,
- * or it demonstrably wasn't). These are the only outcomes that feed
- * availability/failure calculations.
- */
 export const AGENT_ATTRIBUTABLE_OUTCOMES: ReadonlySet<ProbeOutcome> = new Set([
   'SUCCESS',
   'AGENT_UNREACHABLE',
@@ -33,12 +30,6 @@ export const AGENT_ATTRIBUTABLE_OUTCOMES: ReadonlySet<ProbeOutcome> = new Set([
   'PROTOCOL_INVALID',
 ]);
 
-/**
- * Outcomes that reflect AgentProof's own tooling/policy/upstream failure,
- * not a fact about the agent (build prompt section 29 — never let an
- * upstream indexer outage make an agent look unreliable). Excluded
- * entirely from reliability math.
- */
 export const EXCLUDED_OUTCOMES: ReadonlySet<ProbeOutcome> = new Set([
   'UPSTREAM_INDEXER_FAILURE',
   'AGENTPROOF_INTERNAL_ERROR',
@@ -63,13 +54,11 @@ const WINDOW_MS: Record<ReliabilityWindowSize, number> = {
   '30d': 30 * 24 * 60 * 60 * 1000,
 };
 
-// --- Evidence sufficiency thresholds (documented in RELIABILITY_METHODOLOGY.md) ---
 const MIN_OBSERVATIONS_FOR_ANY_DISPLAY = 3;
 const MIN_OBSERVATIONS_FOR_MODERATE = 10;
 const MIN_OBSERVATIONS_FOR_STRONG = 30;
 const MIN_SPAN_RATIO_FOR_MODERATE = 0.25;
 const MIN_SPAN_RATIO_FOR_STRONG = 0.75;
-/** If the most recent observation is older than this fraction of the window, evidence is treated as stale regardless of count. */
 const MAX_STALENESS_RATIO = 0.5;
 
 function median(sorted: number[]): number | undefined {
@@ -78,12 +67,17 @@ function median(sorted: number[]): number | undefined {
   if (sorted.length % 2 === 0) {
     const a = sorted[mid - 1];
     const b = sorted[mid];
-    return a !== undefined && b !== undefined ? (a + b) / 2 : undefined;
+    return a !== undefined && b !== undefined ? Math.round((a + b) / 2) : undefined;
   }
   return sorted[mid];
 }
 
-/** Nearest-rank method: the smallest value such that at least 95% of observations are <= it. */
+function average(numbers: number[]): number | undefined {
+  if (numbers.length === 0) return undefined;
+  const sum = numbers.reduce((acc, val) => acc + val, 0);
+  return Math.round(sum / numbers.length);
+}
+
 function p95(sorted: number[]): number | undefined {
   if (sorted.length === 0) return undefined;
   const rank = Math.ceil(0.95 * sorted.length) - 1;
@@ -112,7 +106,6 @@ export interface ComputeReliabilityWindowParams {
   agentId: string;
   serviceId?: string;
   window: ReliabilityWindowSize;
-  /** All observations available for consideration — the function filters to the window itself, callers do not need to pre-filter by time. */
   observations: ProbeObservation[];
   now: Date;
   methodologyVersion?: string;
@@ -132,10 +125,6 @@ export function computeReliabilityWindow(params: ComputeReliabilityWindowParams)
   });
 
   const attributable = inWindow.filter((o) => AGENT_ATTRIBUTABLE_OUTCOMES.has(o.outcome));
-  // Excluded observations are computed for documentation/debugging purposes
-  // only; they never enter the math below.
-  void inWindow.filter((o) => EXCLUDED_OUTCOMES.has(o.outcome));
-
   const successes = attributable.filter((o) => o.outcome === 'SUCCESS');
   const failures = attributable.filter((o) => o.outcome !== 'SUCCESS');
 
@@ -152,6 +141,7 @@ export function computeReliabilityWindow(params: ComputeReliabilityWindowParams)
     .sort((a, b) => a - b);
 
   const medianLatencyMs = median(successLatencies);
+  const averageLatencyMs = average(successLatencies);
   const p95LatencyMs = p95(successLatencies);
 
   const sortedByTimeDesc = [...attributable].sort(
@@ -195,6 +185,7 @@ export function computeReliabilityWindow(params: ComputeReliabilityWindowParams)
     failureCount,
     ...(availabilityPct !== undefined ? { availabilityPct } : {}),
     ...(medianLatencyMs !== undefined ? { medianLatencyMs } : {}),
+    ...(averageLatencyMs !== undefined ? { averageLatencyMs } : {}),
     ...(p95LatencyMs !== undefined ? { p95LatencyMs } : {}),
     ...(lastSuccessfulProbeAt ? { lastSuccessfulProbeAt } : {}),
     ...(lastProbeAt ? { lastProbeAt } : {}),
@@ -211,5 +202,103 @@ export function computeAllWindows(
     '24h': computeReliabilityWindow({ ...params, window: '24h' }),
     '7d': computeReliabilityWindow({ ...params, window: '7d' }),
     '30d': computeReliabilityWindow({ ...params, window: '30d' }),
+  };
+}
+
+/**
+ * Calculates the explainable Sentinel Reliability Score (0-100).
+ *
+ * Weights:
+ * - Availability (50%): Empirical uptime across active windows.
+ * - Latency Performance (25%): Sub-300ms is full marks, scaling down for high/inconsistent latency.
+ * - Evidence Depth (15%): Statistical confidence based on measurement coverage.
+ * - Recovery Stability (10%): Penalty for active failures and unresolved incidents.
+ */
+export function computeSentinelReliabilityScore(params: {
+  window24h: ReliabilityWindow;
+  window7d: ReliabilityWindow;
+  activeIncidentsCount?: number;
+  now: Date;
+}): SentinelReliabilityScore {
+  const { window24h, window7d, activeIncidentsCount = 0, now } = params;
+
+  if (!window24h.sufficientData && !window7d.sufficientData) {
+    return {
+      score: 0,
+      tier: 'UNMEASURED',
+      availabilityScore: 0,
+      latencyScore: 0,
+      coverageScore: 0,
+      stabilityScore: 0,
+      formulaDescription:
+        'Insufficient empirical measurement history (< 3 attributable checks recorded).',
+      computedAt: now.toISOString(),
+    };
+  }
+
+  // 1. Availability Score (50%)
+  const avail24 = window24h.availabilityPct ?? window7d.availabilityPct ?? 100;
+  const avail7 = window7d.availabilityPct ?? avail24;
+  const availabilityScore = Math.round(avail24 * 0.7 + avail7 * 0.3);
+
+  // 2. Latency Score (25%)
+  const latency = window24h.medianLatencyMs ?? window7d.medianLatencyMs ?? 500;
+  let latencyScore = 100;
+  if (latency <= 300) {
+    latencyScore = 100;
+  } else if (latency <= 1000) {
+    latencyScore = Math.round(100 - ((latency - 300) / 700) * 30); // 100 down to 70
+  } else if (latency <= 3000) {
+    latencyScore = Math.round(70 - ((latency - 1000) / 2000) * 40); // 70 down to 30
+  } else {
+    latencyScore = 15;
+  }
+
+  // 3. Evidence Coverage Score (15%)
+  let coverageScore = 0;
+  if (window24h.dataSufficiency === 'STRONG' || window7d.dataSufficiency === 'STRONG') {
+    coverageScore = 100;
+  } else if (window24h.dataSufficiency === 'MODERATE' || window7d.dataSufficiency === 'MODERATE') {
+    coverageScore = 75;
+  } else if (window24h.dataSufficiency === 'LIMITED' || window7d.dataSufficiency === 'LIMITED') {
+    coverageScore = 45;
+  }
+
+  // 4. Stability & Incident Score (10%)
+  let stabilityScore = 100;
+  const failures = window24h.consecutiveFailures;
+  if (failures === 1) stabilityScore = 75;
+  else if (failures === 2) stabilityScore = 40;
+  else if (failures >= 3) stabilityScore = 10;
+
+  if (activeIncidentsCount > 0) {
+    stabilityScore = Math.max(0, stabilityScore - activeIncidentsCount * 30);
+  }
+
+  // Composite Weighted Score
+  const rawScore =
+    availabilityScore * 0.5 +
+    latencyScore * 0.25 +
+    coverageScore * 0.15 +
+    stabilityScore * 0.1;
+
+  const score = Math.min(100, Math.max(0, Math.round(rawScore)));
+
+  let tier: SentinelReliabilityScore['tier'] = 'HEALTHY';
+  if (score >= 90) tier = 'OPTIMAL';
+  else if (score >= 75) tier = 'HEALTHY';
+  else if (score >= 50) tier = 'DEGRADED';
+  else tier = 'CRITICAL';
+
+  return {
+    score,
+    tier,
+    availabilityScore,
+    latencyScore,
+    coverageScore,
+    stabilityScore,
+    formulaDescription:
+      'Calculated as: 50% Availability + 25% Latency Consistency + 15% Evidence Coverage + 10% Incident Stability.',
+    computedAt: now.toISOString(),
   };
 }

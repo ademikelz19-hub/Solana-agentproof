@@ -3,7 +3,8 @@ import { db, agents } from '@agentproof/db';
 import { apiError } from '@/lib/api/response';
 import { parsePagination } from '@/lib/api/pagination';
 import { normalizeChain } from '@/lib/api/agent-params';
-import { and, desc, eq, lt } from 'drizzle-orm';
+import { SAID_PROGRAM_ID } from '@agentproof/core';
+import { and, desc, eq, ilike, lt, or } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -18,80 +19,89 @@ export async function GET(request: NextRequest) {
   const chainParam = searchParams.get('chain') ?? undefined;
   const normalizedChain = chainParam ? normalizeChain(chainParam) : undefined;
   if (chainParam && !normalizedChain) {
-    return apiError('VALIDATION_ERROR', `Unsupported chain: ${chainParam}. Supported chains: bsc (56)`);
+    return apiError('VALIDATION_ERROR', `Unsupported chain: ${chainParam}. Supported chains: solana (Solana Mainnet)`);
   }
+
+  const verifiedOnly = searchParams.get('verifiedOnly') === 'true';
+  const monitoredOnly = searchParams.get('monitoredOnly') === 'true';
+  const searchQuery = searchParams.get('q') ?? searchParams.get('search');
 
   const conditions = [
     normalizedChain ? eq(agents.chain, normalizedChain) : undefined,
+    verifiedOnly ? eq(agents.verificationStatus, 'VERIFIED') : undefined,
+    monitoredOnly ? eq(agents.isMonitored, true) : undefined,
     pagination.value.cursor ? lt(agents.id, pagination.value.cursor) : undefined,
   ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+
+  if (searchQuery && searchQuery.trim().length > 0) {
+    const q = `%${searchQuery.trim()}%`;
+    conditions.push(
+      or(
+        ilike(agents.name, q),
+        ilike(agents.walletAddress, q),
+        ilike(agents.description, q),
+      )!,
+    );
+  }
 
   const limit = pagination.value.limit;
   const rows = await db
     .select()
     .from(agents)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(agents.id))
+    .orderBy(desc(agents.lastSyncedAt))
     .limit(limit + 1);
 
   const hasMore = rows.length > limit;
   const pageRows = rows.slice(0, limit);
   const nextCursor = hasMore ? pageRows[pageRows.length - 1]?.id : undefined;
 
-  const enrichedItems = pageRows.map((r) => ({
-    id: r.id,
-    chain: r.chain,
-    onchainId: r.onchainId,
-    registryAddress: r.registryAddress ?? '0x8004a169fb4a3325136eb29fa0ceb6d2e539a432',
-    name: r.name ?? `Agent #${r.onchainId}`,
-    description: r.description ?? null,
-    metadataUri: r.metadataUri ?? null,
-    metadataResolved: r.metadataResolved,
-    
-    // EVM & ERC-8004 compatibility fields (what AgentFlow, viem, wagmi, 8004scan use):
-    token_id: r.onchainId,
-    chain_id: 56,
-    contract_address: r.registryAddress ?? '0x8004a169fb4a3325136eb29fa0ceb6d2e539a432',
+  const enrichedItems = pageRows.map((r) => {
+    let skills: string[] = [];
+    let serviceTypes: string[] = [];
+    try {
+      if (r.skills) skills = JSON.parse(r.skills);
+      if (r.serviceTypes) serviceTypes = JSON.parse(r.serviceTypes);
+    } catch {
+      // ignore
+    }
 
-    provenance: {
-      source: r.provenanceSource,
-      origin: r.provenanceOrigin,
-      observedAt: r.lastIngestedAt ? new Date(r.lastIngestedAt).toISOString() : new Date().toISOString(),
-    },
-  }));
+    return {
+      id: r.id,
+      chain: r.chain,
+      walletAddress: r.walletAddress,
+      saidProgramId: SAID_PROGRAM_ID,
+      name: r.name ?? `Agent ${r.walletAddress.slice(0, 4)}..${r.walletAddress.slice(-4)}`,
+      description: r.description ?? null,
+      verificationStatus: r.verificationStatus,
+      trustTier: r.trustTier ?? null,
+      saidReputationScore: r.saidReputationScore ?? null,
+      skills,
+      serviceTypes,
+      website: r.website ?? null,
+      mcpEndpoint: r.mcpEndpoint ?? null,
+      a2aEndpoint: r.a2aEndpoint ?? null,
+      isMonitored: r.isMonitored,
+      solscanUrl: `https://solscan.io/account/${r.walletAddress}`,
+      firstSeenAt: r.firstSeenAt ? new Date(r.firstSeenAt).toISOString() : new Date().toISOString(),
+      lastSyncedAt: r.lastSyncedAt ? new Date(r.lastSyncedAt).toISOString() : new Date().toISOString(),
+      provenance: {
+        source: r.provenanceSource,
+        origin: r.provenanceOrigin,
+        observedAt: r.lastSyncedAt ? new Date(r.lastSyncedAt).toISOString() : new Date().toISOString(),
+      },
+    };
+  });
 
   const generatedAt = new Date().toISOString();
 
-  // If the caller requested an envelope format (e.g. ?format=envelope)
-  if (searchParams.get('format') === 'envelope') {
-    return NextResponse.json(
-      {
-        data: {
-          items: enrichedItems,
-          nextCursor,
-        },
-        items: enrichedItems,
-        nextCursor,
-        generatedAt,
-      },
-      {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, HEAD',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
-          'Cache-Control': 'public, max-age=0, s-maxage=30, stale-while-revalidate=30',
-        },
-      }
-    );
-  }
-
-  // Default: data is an ARRAY so data.map(...) works directly for frontend frameworks (AgentFlow, 8004scan consumers)
   return NextResponse.json(
     {
       success: true,
+      network: 'Solana Mainnet',
+      saidProgramId: SAID_PROGRAM_ID,
       data: enrichedItems,
       items: enrichedItems,
-      nextCursor,
       pagination: {
         limit,
         nextCursor,
@@ -102,10 +112,9 @@ export async function GET(request: NextRequest) {
     {
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, HEAD',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
-        'Cache-Control': 'public, max-age=0, s-maxage=30, stale-while-revalidate=30',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS, HEAD',
+        'Cache-Control': 'public, max-age=10, s-maxage=30, stale-while-revalidate=30',
       },
-    }
+    },
   );
 }

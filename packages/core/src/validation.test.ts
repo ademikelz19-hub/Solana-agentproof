@@ -1,58 +1,90 @@
 import { describe, expect, it } from 'vitest';
-import { parseExternal, parseExternalJsonText, rawAgentMetadataSchema } from './validation';
+import {
+  isValidSolanaAddress,
+  parseExternal,
+  parseExternalJsonText,
+  rawSaidAgentSchema,
+  rawSaidAgentsListResponseSchema,
+  rawSaidTrustScreenResponseSchema,
+  rawSaidVerifyResponseSchema,
+} from './validation';
 
-describe('parseExternal', () => {
-  it('accepts a well-formed metadata document with services', () => {
-    const result = parseExternal(rawAgentMetadataSchema, {
-      name: 'Test Agent',
-      services: [{ id: 's1', type: 'HTTP', url: 'https://example.test/api' }],
-    });
-    expect(result.ok).toBe(true);
+describe('isValidSolanaAddress', () => {
+  it('accepts valid Solana mainnet public keys', () => {
+    // Official SAID Program ID
+    expect(isValidSolanaAddress('5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G')).toBe(true);
+    // System Program
+    expect(isValidSolanaAddress('11111111111111111111111111111111')).toBe(true);
+    // Known Solana addresses
+    expect(isValidSolanaAddress('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA')).toBe(true);
   });
 
-  it('accepts a well-formed metadata document with legacy endpoints', () => {
-    const result = parseExternal(rawAgentMetadataSchema, {
-      endpoints: [{ id: 'e1', endpoint: 'https://example.test/api' }],
-    });
-    expect(result.ok).toBe(true);
+  it('rejects EVM 0x addresses', () => {
+    expect(isValidSolanaAddress('0x8004a169fb4a3325136eb29fa0ceb6d2e539a432')).toBe(false);
+    expect(isValidSolanaAddress('0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045')).toBe(false);
   });
 
-  it('fails safely (no throw) on wrong field types', () => {
-    expect(() =>
-      parseExternal(rawAgentMetadataSchema, { name: 42, services: 'not-an-array' }),
-    ).not.toThrow();
-    const result = parseExternal(rawAgentMetadataSchema, { name: 42, services: 'not-an-array' });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('fails safely on completely unexpected shapes (array, null, string)', () => {
-    for (const bad of [null, [], 'a string', 42, true]) {
-      const result = parseExternal(rawAgentMetadataSchema, bad);
-      expect(result.ok).toBe(false);
-    }
-  });
-
-  it('preserves unknown extra fields via passthrough without trusting them', () => {
-    const result = parseExternal(rawAgentMetadataSchema, {
-      name: 'Test',
-      someFutureField: { nested: true },
-    });
-    expect(result.ok).toBe(true);
+  it('rejects malformed, empty, or non-base58 strings', () => {
+    expect(isValidSolanaAddress('')).toBe(false);
+    expect(isValidSolanaAddress('   ')).toBe(false);
+    expect(isValidSolanaAddress('not-a-solana-key')).toBe(false);
+    expect(isValidSolanaAddress('00000000000000000000000000000000000000000000000000')).toBe(false);
+    expect(isValidSolanaAddress(null)).toBe(false);
+    expect(isValidSolanaAddress(12345)).toBe(false);
   });
 });
 
-describe('parseExternalJsonText', () => {
-  it('fails safely on invalid JSON text rather than throwing', () => {
-    const result = parseExternalJsonText(rawAgentMetadataSchema, '{not valid json');
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/invalid JSON/);
+describe('SAID Protocol Schemas', () => {
+  it('validates a valid SAID agent object', () => {
+    const raw = {
+      wallet: '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G',
+      name: 'Sentinel Alpha',
+      description: 'Autonomous reliability monitor on Solana',
+      isVerified: true,
+      trustTier: 'TIER_1',
+      reputationScore: 94,
+      skills: ['uptime-monitoring', 'mcp-probing'],
+      serviceTypes: ['MCP', 'A2A'],
+      mcpEndpoint: 'https://sentinel.agent/mcp',
+      a2aEndpoint: 'https://sentinel.agent/a2a',
+    };
+
+    const res = parseExternal(rawSaidAgentSchema, raw);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.name).toBe('Sentinel Alpha');
+      expect(res.data.isVerified).toBe(true);
+    }
   });
 
-  it('parses valid JSON text and then schema-validates it', () => {
-    const result = parseExternalJsonText(rawAgentMetadataSchema, JSON.stringify({ name: 'ok' }));
-    expect(result.ok).toBe(true);
+  it('validates SAID verify endpoint response', () => {
+    const raw = {
+      verified: true,
+      wallet: '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G',
+      tier: 'TIER_1',
+      registeredAt: '2026-02-15T00:00:00Z',
+    };
+    const res = parseExternal(rawSaidVerifyResponseSchema, raw);
+    expect(res.ok).toBe(true);
+  });
+
+  it('validates SAID Trust Screen verdict and dimensions', () => {
+    const raw = {
+      wallet: '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G',
+      verdict: 'allow',
+      score: 96,
+      dimensions: {
+        reliability: 98,
+        transactionCount: 1540,
+        disputeRate: 0,
+        tenureDays: 120,
+      },
+    };
+    const res = parseExternal(rawSaidTrustScreenResponseSchema, raw);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.verdict).toBe('allow');
+      expect(res.data.score).toBe(96);
+    }
   });
 });

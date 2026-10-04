@@ -18,9 +18,9 @@ function makeObservation(
   const ts = new Date(Date.now() - minutesAgo * 60 * 1000).toISOString();
   return {
     id: `obs-${Math.random()}`,
-    agentId: 'bsc:test-agent',
-    chain: 'bsc',
-    serviceId: 'bsc:test-agent:svc1',
+    agentId: 'solana:test-agent',
+    chain: 'solana',
+    serviceId: 'solana:test-agent:svc1',
     probeType: 'SERVICE_REACHABILITY',
     timestamp: ts,
     outcome,
@@ -62,7 +62,7 @@ describe('Canonical Reliability & Outcome Categorization', () => {
     ];
 
     const window = computeReliabilityWindow({
-      agentId: 'bsc:test-agent',
+      agentId: 'solana:test-agent',
       window: '24h',
       observations: obs,
       now,
@@ -86,7 +86,7 @@ describe('Canonical Reliability & Outcome Categorization', () => {
     ];
 
     const window = computeReliabilityWindow({
-      agentId: 'bsc:test-agent',
+      agentId: 'solana:test-agent',
       window: '24h',
       observations: obs,
       now,
@@ -110,7 +110,7 @@ describe('Canonical Reliability & Outcome Categorization', () => {
     ];
 
     const window = computeReliabilityWindow({
-      agentId: 'bsc:test-agent',
+      agentId: 'solana:test-agent',
       window: '24h',
       observations: obs,
       now,
@@ -150,14 +150,14 @@ describe('Canonical Reliability & Outcome Categorization', () => {
     ];
 
     const single24h = computeReliabilityWindow({
-      agentId: 'bsc:test-agent',
+      agentId: 'solana:test-agent',
       window: '24h',
       observations: obs,
       now,
     });
 
     const allWindows = computeAllWindows({
-      agentId: 'bsc:test-agent',
+      agentId: 'solana:test-agent',
       observations: obs,
       now,
     });

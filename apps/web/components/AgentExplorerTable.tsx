@@ -2,12 +2,25 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { Search, ArrowUpRight, ChevronLeft, ChevronRight, Activity, Database, CheckCircle2, Zap, Clock, Shield } from 'lucide-react';
+import { Search, ArrowUpRight, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { CopyButton } from './CopyButton';
-import { ProtocolBadge, ProvenanceBadge, MonitoringStatusBadge, MetadataStatusBadge } from './Badges';
-import type { AgentIdentity } from '@agentproof/core';
+import {
+  ProtocolBadge,
+  ProvenanceBadge,
+  MonitoringStatusBadge,
+  MetadataStatusBadge,
+  SaidVerificationBadge,
+  TrustTierBadge,
+  SentinelScoreBadge,
+} from './Badges';
+import type { AgentIdentity, SaidVerificationStatus } from '@agentproof/core';
 
-export interface AgentListItem extends AgentIdentity {
+export interface AgentListItem {
+  id: string;
+  chain: string;
+  onchainId?: string;
+  registryAddress?: string;
+  walletAddress?: string;
   name?: string | null;
   description?: string | null;
   metadataResolved?: boolean;
@@ -19,39 +32,38 @@ export interface AgentListItem extends AgentIdentity {
   availabilityPct?: number | null;
   latestOutcome?: string;
   latestLatencyMs?: number;
+  saidVerificationStatus?: SaidVerificationStatus | string;
+  saidTrustTier?: string | null;
+  sentinelScore?: number | null;
+  mcpEndpoint?: string;
+  a2aEndpoint?: string;
+  skills?: string[];
+  serviceTypes?: string[];
+  provenance?: {
+    source: string;
+    origin?: string;
+    observedAt: string;
+  };
 }
 
 const PAGE_SIZE = 25;
 
 export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListItem[]; totalCount?: number }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterMode, setFilterMode] = useState<'ALL' | 'UNIQUE' | 'WITH_SERVICES' | 'MONITORED' | 'RESOLVED'>('ALL');
+  const [filterMode, setFilterMode] = useState<'ALL' | 'VERIFIED' | 'WITH_SERVICES' | 'MONITORED'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Precompute name frequency to identify batch-minted agent templates (e.g. Ave.ai)
-  const nameCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const a of agents) {
-      const n = (a.name ?? a.id).trim().toLowerCase();
-      counts[n] = (counts[n] ?? 0) + 1;
-    }
-    return counts;
-  }, [agents]);
-
-  const uniqueCount = useMemo(() => {
-    return Object.keys(nameCounts).length;
-  }, [nameCounts]);
-
   const filteredAgents = useMemo(() => {
-    const seenNames = new Set<string>();
-
     return agents.filter((agent) => {
       // Search filter
+      const term = searchTerm.toLowerCase();
       const matchesSearch =
-        agent.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        agent.onchainId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (agent.name && agent.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (agent.description && agent.description.toLowerCase().includes(searchTerm.toLowerCase()));
+        agent.id.toLowerCase().includes(term) ||
+        (agent.walletAddress && agent.walletAddress.toLowerCase().includes(term)) ||
+        (agent.onchainId && agent.onchainId.toLowerCase().includes(term)) ||
+        (agent.name && agent.name.toLowerCase().includes(term)) ||
+        (agent.description && agent.description.toLowerCase().includes(term)) ||
+        (agent.skills && agent.skills.some((s) => s.toLowerCase().includes(term)));
 
       if (!matchesSearch) return false;
 
@@ -59,19 +71,11 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
       if (filterMode === 'MONITORED') {
         return agent.isMonitored === true || (agent.observationCount ?? 0) > 0;
       }
+      if (filterMode === 'VERIFIED') {
+        return agent.saidVerificationStatus === 'VERIFIED';
+      }
       if (filterMode === 'WITH_SERVICES') {
-        return (agent.serviceCount ?? 0) > 0 || (agent.services && agent.services.length > 0);
-      }
-      if (filterMode === 'RESOLVED') {
-        return agent.metadataResolved === true;
-      }
-      if (filterMode === 'UNIQUE') {
-        const key = (agent.name ?? agent.id).trim().toLowerCase();
-        if (seenNames.has(key)) {
-          return false;
-        }
-        seenNames.add(key);
-        return true;
+        return (agent.serviceCount ?? 0) > 0 || (agent.services && agent.services.length > 0) || agent.mcpEndpoint || agent.a2aEndpoint;
       }
       return true;
     });
@@ -89,6 +93,15 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
   const monitoredCount = useMemo(() => {
     return agents.filter((a) => a.isMonitored || (a.observationCount ?? 0) > 0).length;
   }, [agents]);
+
+  const verifiedCount = useMemo(() => {
+    return agents.filter((a) => a.saidVerificationStatus === 'VERIFIED').length;
+  }, [agents]);
+
+  const truncateSolanaKey = (key: string) => {
+    if (!key || key.length < 12) return key;
+    return `${key.slice(0, 4)}...${key.slice(-4)}`;
+  };
 
   return (
     <div>
@@ -132,7 +145,7 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
             </div>
             <input
               type="text"
-              placeholder="Search by Token ID (#2518), Name, or Keyword..."
+              placeholder="Search by Solana address, name, or skill..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -161,7 +174,17 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
               }}
               className={`btn btn-sm ${filterMode === 'ALL' ? 'btn-primary' : 'btn-secondary'}`}
             >
-              All Indexed ({totalCount ?? agents.length})
+              All Agents ({totalCount ?? agents.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFilterMode('VERIFIED');
+                setCurrentPage(1);
+              }}
+              className={`btn btn-sm ${filterMode === 'VERIFIED' ? 'btn-primary' : 'btn-secondary'}`}
+            >
+              SAID Verified ({verifiedCount})
             </button>
             <button
               type="button"
@@ -181,34 +204,13 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
               }}
               className={`btn btn-sm ${filterMode === 'WITH_SERVICES' ? 'btn-primary' : 'btn-secondary'}`}
             >
-              Has Endpoints
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setFilterMode('UNIQUE');
-                setCurrentPage(1);
-              }}
-              className={`btn btn-sm ${filterMode === 'UNIQUE' ? 'btn-primary' : 'btn-secondary'}`}
-              title="Show only 1 representative agent per template name (hides mass-minted Ave.ai duplicates)"
-            >
-              Unique Names ({uniqueCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setFilterMode('RESOLVED');
-                setCurrentPage(1);
-              }}
-              className={`btn btn-sm ${filterMode === 'RESOLVED' ? 'btn-primary' : 'btn-secondary'}`}
-            >
-              Metadata Resolved
+              Has Endpoints (MCP/A2A)
             </button>
           </div>
         </div>
       </div>
 
-      {/* Results Count & Pagination Header */}
+      {/* Results Count & Subheader */}
       <div
         style={{
           display: 'flex',
@@ -226,10 +228,13 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
           Showing {filteredAgents.length === 0 ? 0 : (activePage - 1) * PAGE_SIZE + 1}–
           {Math.min(activePage * PAGE_SIZE, filteredAgents.length)} of {filteredAgents.length} agents
           {totalCount && totalCount > agents.length && filterMode === 'ALL' && !searchTerm
-            ? ` (${totalCount.toLocaleString()} total in registry)`
+            ? ` (${totalCount.toLocaleString()} total registered)`
             : null}
         </span>
-        <span>BNB Chain (56) • ERC-8004 Registry</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <span className="live-pulse" style={{ width: 6, height: 6 }} />
+          <span>Solana Mainnet • SAID Program (5dpw6K...)</span>
+        </span>
       </div>
 
       {/* Empty State */}
@@ -262,19 +267,18 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Agent Name & ID</th>
-                  <th>Live Status / Availability</th>
+                  <th>Agent & Solana Identity</th>
+                  <th>SAID Verification</th>
+                  <th>Reliability Evidence</th>
                   <th>Declared Endpoints</th>
-                  <th>Metadata</th>
-                  <th>Provenance</th>
-                  <th style={{ textAlign: 'right' }}>Passport</th>
+                  <th>Sentinel Score</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {paginatedAgents.map((agent) => {
                   const avail = agent.availabilityPct;
-                  const isOnline = agent.latestOutcome === 'SUCCESS';
-                  const batchCount = nameCounts[(agent.name ?? agent.id).trim().toLowerCase()] ?? 1;
+                  const solAddress = agent.onchainId || agent.id;
 
                   return (
                     <tr key={agent.id}>
@@ -283,7 +287,7 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                             <Link
-                              href={`/agents/${agent.chain}/${agent.id}`}
+                              href={`/agents/solana/${agent.id}`}
                               style={{
                                 fontWeight: 700,
                                 color: 'var(--text-primary)',
@@ -292,34 +296,19 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
                                 gap: '0.35rem',
                               }}
                             >
-                              <span className="font-mono">{agent.name ?? agent.id}</span>
+                              <span className="font-mono">{agent.name ?? truncateSolanaKey(solAddress)}</span>
                             </Link>
                             <span className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                              #{agent.onchainId}
+                              {truncateSolanaKey(solAddress)}
                             </span>
-                            {batchCount > 1 && (
-                              <span
-                                style={{
-                                  fontSize: '0.65rem',
-                                  padding: '0.1rem 0.35rem',
-                                  borderRadius: 4,
-                                  background: 'rgba(240, 185, 11, 0.1)',
-                                  border: '1px solid rgba(240, 185, 11, 0.3)',
-                                  color: 'var(--accent-bnb)',
-                                  fontFamily: 'var(--font-mono)',
-                                }}
-                                title={`Batch-minted identity: ${batchCount} on-chain tokens share this template name`}
-                              >
-                                {batchCount}x Batch
-                              </span>
-                            )}
+                            <CopyButton text={solAddress} label="Copy" />
                           </div>
                           {agent.description && (
                             <span
                               style={{
                                 fontSize: '0.75rem',
                                 color: 'var(--text-muted)',
-                                maxWidth: 300,
+                                maxWidth: 280,
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
@@ -332,7 +321,15 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
                         </div>
                       </td>
 
-                      {/* Brief Live Status / Availability */}
+                      {/* SAID Verification */}
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
+                          <SaidVerificationBadge status={agent.saidVerificationStatus} />
+                          {agent.saidTrustTier && <TrustTierBadge tier={agent.saidTrustTier} />}
+                        </div>
+                      </td>
+
+                      {/* Reliability Evidence */}
                       <td>
                         {avail !== undefined && avail !== null ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
@@ -342,21 +339,21 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
                                 style={{
                                   fontWeight: 700,
                                   fontSize: '0.85rem',
-                                  color: avail >= 90 ? 'var(--status-success)' : avail >= 70 ? 'var(--status-warning)' : 'var(--status-failure)',
+                                  color: avail >= 95 ? 'var(--status-success)' : avail >= 80 ? 'var(--status-warning)' : 'var(--status-failure)',
                                 }}
                               >
                                 {avail === 0 ? '0.0% (OFFLINE)' : `${avail.toFixed(1)}% Uptime`}
                               </span>
                             </div>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                               {agent.latestLatencyMs
-                                ? `${agent.latestLatencyMs}ms latency · ${agent.observationCount} run${agent.observationCount === 1 ? '' : 's'}`
-                                : `${agent.observationCount} test${agent.observationCount === 1 ? '' : 's'} logged`}
+                                ? `${agent.latestLatencyMs}ms · ${agent.observationCount} check${agent.observationCount === 1 ? '' : 's'}`
+                                : `${agent.observationCount} checks completed`}
                             </span>
                           </div>
-                        ) : (!agent.services || agent.services.length === 0) ? (
+                        ) : (!agent.services || agent.services.length === 0) && !agent.mcpEndpoint && !agent.a2aEndpoint ? (
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            NO ENDPOINTS DECLARED
+                            NO ENDPOINTS PUBLISHED
                           </span>
                         ) : agent.isMonitored ? (
                           <span className="badge font-mono" style={{ background: 'var(--status-success-bg)', color: 'var(--status-success)', border: '1px solid var(--status-success-border)' }}>
@@ -365,46 +362,53 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
                           </span>
                         ) : (
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            STANDBY (NO RUNS)
+                            PENDING FIRST CHECK
                           </span>
                         )}
                       </td>
 
-                      {/* Declared Services */}
+                      {/* Declared Endpoints */}
                       <td>
-                        {agent.services && agent.services.length > 0 ? (
-                          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
-                            {agent.services.map((s) => (
-                              <ProtocolBadge key={s.id} protocol={s.protocol} />
-                            ))}
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            0 declared
-                          </span>
-                        )}
+                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                          {agent.mcpEndpoint && <ProtocolBadge protocol="MCP" />}
+                          {agent.a2aEndpoint && <ProtocolBadge protocol="A2A" />}
+                          {agent.services &&
+                            agent.services
+                              .filter((s) => s.protocol !== 'MCP' && s.protocol !== 'A2A')
+                              .map((s) => <ProtocolBadge key={s.id} protocol={s.protocol} />)}
+                          {!agent.mcpEndpoint && !agent.a2aEndpoint && (!agent.services || agent.services.length === 0) && (
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>None declared</span>
+                          )}
+                        </div>
                       </td>
 
-                      {/* Metadata Status */}
+                      {/* Sentinel Score */}
                       <td>
-                        <MetadataStatusBadge resolved={agent.metadataResolved ?? false} />
+                        <SentinelScoreBadge score={agent.sentinelScore} />
                       </td>
 
-                      {/* Provenance */}
-                      <td>
-                        <ProvenanceBadge source={agent.provenance.source} origin={agent.provenance.origin} />
-                      </td>
-
-                      {/* Action Link */}
+                      {/* Action Links */}
                       <td style={{ textAlign: 'right' }}>
-                        <Link
-                          href={`/agents/${agent.chain}/${agent.id}`}
-                          className="btn btn-secondary btn-sm"
-                          style={{ padding: '0.3rem 0.65rem' }}
-                        >
-                          <span>Passport</span>
-                          <ArrowUpRight size={12} />
-                        </Link>
+                        <div style={{ display: 'inline-flex', gap: '0.4rem' }}>
+                          <a
+                            href={`https://solscan.io/account/${solAddress}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '0.3rem 0.5rem' }}
+                            title="View on Solscan"
+                          >
+                            <ExternalLink size={12} />
+                          </a>
+                          <Link
+                            href={`/agents/solana/${agent.id}`}
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '0.3rem 0.65rem' }}
+                          >
+                            <span>Inspect</span>
+                            <ArrowUpRight size={12} />
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -417,7 +421,7 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
           <div className="mobile-only" style={{ flexDirection: 'column', gap: '0.75rem' }}>
             {paginatedAgents.map((agent) => {
               const avail = agent.availabilityPct;
-              const batchCount = nameCounts[(agent.name ?? agent.id).trim().toLowerCase()] ?? 1;
+              const solAddress = agent.onchainId || agent.id;
 
               return (
                 <div
@@ -433,57 +437,24 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
                     <div>
                       <Link
-                        href={`/agents/${agent.chain}/${agent.id}`}
+                        href={`/agents/solana/${agent.id}`}
                         style={{
                           fontWeight: 700,
                           fontSize: '0.95rem',
                           color: 'var(--text-primary)',
                         }}
                       >
-                        {agent.name ?? agent.id}
+                        {agent.name ?? truncateSolanaKey(solAddress)}
                       </Link>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.2rem' }}>
                         <span className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          #{agent.onchainId}
+                          {truncateSolanaKey(solAddress)}
                         </span>
-                        {batchCount > 1 && (
-                          <span
-                            style={{
-                              fontSize: '0.65rem',
-                              padding: '0.1rem 0.35rem',
-                              borderRadius: 4,
-                              background: 'rgba(240, 185, 11, 0.1)',
-                              border: '1px solid rgba(240, 185, 11, 0.3)',
-                              color: 'var(--accent-bnb)',
-                              fontFamily: 'var(--font-mono)',
-                            }}
-                            title={`Batch-minted identity: ${batchCount} on-chain tokens share this template name`}
-                          >
-                            {batchCount}x Batch
-                          </span>
-                        )}
-                        <CopyButton text={agent.id} label="ID" />
+                        <CopyButton text={solAddress} label="Copy" />
                       </div>
                     </div>
 
-                    {avail !== undefined && avail !== null ? (
-                      <span
-                        className="font-mono"
-                        style={{
-                          fontWeight: 700,
-                          fontSize: '0.82rem',
-                          color: avail >= 90 ? 'var(--status-success)' : avail >= 70 ? 'var(--status-warning)' : 'var(--status-failure)',
-                          padding: '0.15rem 0.45rem',
-                          background: 'var(--bg-surface-2)',
-                          borderRadius: 4,
-                          border: '1px solid var(--border-subtle)',
-                        }}
-                      >
-                        {avail === 0 ? '0.0% OFFLINE' : `${avail.toFixed(1)}%`}
-                      </span>
-                    ) : (
-                      <MonitoringStatusBadge isMonitored={Boolean(agent.isMonitored || (agent.observationCount ?? 0) > 0)} />
-                    )}
+                    <SaidVerificationBadge status={agent.saidVerificationStatus} />
                   </div>
 
                   {agent.description && (
@@ -493,10 +464,6 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
                         color: 'var(--text-secondary)',
                         lineHeight: 1.4,
                         margin: 0,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
                       }}
                     >
                       {agent.description}
@@ -504,16 +471,17 @@ export function AgentExplorerTable({ agents, totalCount }: { agents: AgentListIt
                   )}
 
                   <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <MetadataStatusBadge resolved={agent.metadataResolved ?? false} />
-                    {agent.services && agent.services.length > 0 ? (
-                      agent.services.map((s) => <ProtocolBadge key={s.id} protocol={s.protocol} />)
-                    ) : (
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>0 endpoints</span>
+                    {agent.mcpEndpoint && <ProtocolBadge protocol="MCP" />}
+                    {agent.a2aEndpoint && <ProtocolBadge protocol="A2A" />}
+                    {avail !== undefined && avail !== null && (
+                      <span className="font-mono" style={{ fontSize: '0.75rem', color: 'var(--status-success)' }}>
+                        {avail.toFixed(1)}% Uptime
+                      </span>
                     )}
                   </div>
 
                   <Link
-                    href={`/agents/${agent.chain}/${agent.id}`}
+                    href={`/agents/solana/${agent.id}`}
                     className="btn btn-secondary btn-sm"
                     style={{ width: '100%', justifyContent: 'center' }}
                   >

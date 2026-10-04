@@ -13,7 +13,12 @@
   },
   "dependencies": {
     "@agentproof/core": "0.1.0",
-    "@agentproof/probes": "0.1.0"
+    "@agentproof/db": "0.1.0",
+    "@agentproof/probes": "0.1.0",
+    "@agentproof/reliability": "0.1.0",
+    "@said-protocol/agent": "^0.1.0",
+    "@solana/web3.js": "^1.98.0",
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

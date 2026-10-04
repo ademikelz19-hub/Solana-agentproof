@@ -1,138 +1,145 @@
 /**
- * AgentProof domain model.
+ * AgentProof Sentinel Domain Model
  *
- * These are AgentProof's own internal types. External data (8004scan,
- * indexers, RPC responses) is NEVER used directly as these types — it is
- * always parsed through a runtime validation boundary (see `validation.ts`)
- * and mapped through a source-specific adapter (see `packages/sources`)
- * before it becomes one of these.
+ * Autonomous operational reliability layer for AI agents registered on SAID Protocol (Solana Mainnet).
+ * Network: Solana Mainnet
+ * SAID Program ID: 5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G
  */
 
 // ---------------------------------------------------------------------------
-// Chain
+// Chain & Network Definitions
 // ---------------------------------------------------------------------------
 
-/**
- * Supported chains. AgentProof V0 is BSC-first but the type is deliberately
- * a union (not a lone literal) so adding a chain later is a type-level
- * change, not a structural rewrite. Do not add chains here until an adapter
- * for them actually exists.
- */
-export type ChainId = 'bsc';
+export type ChainId = 'solana';
 
 export interface Chain {
   id: ChainId;
-  /** e.g. 56 for BSC mainnet */
-  chainId: number;
+  cluster: 'mainnet-beta' | 'devnet';
   name: string;
+  programId: string;
 }
 
-export const BSC: Chain = {
-  id: 'bsc',
-  chainId: 56,
-  name: 'BNB Smart Chain',
+export const SAID_PROGRAM_ID = '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G';
+
+export const SOLANA_MAINNET: Chain = {
+  id: 'solana',
+  cluster: 'mainnet-beta',
+  name: 'Solana Mainnet',
+  programId: SAID_PROGRAM_ID,
 };
 
-export const SUPPORTED_CHAINS: readonly Chain[] = [BSC];
+export const SUPPORTED_CHAINS: readonly Chain[] = [SOLANA_MAINNET];
 
 // ---------------------------------------------------------------------------
-// Provenance — every piece of data AgentProof stores must say where it came
-// from. This is not optional and not decorative: it's how a reviewer or a
-// consumer of the API can tell "AgentProof measured this" apart from
-// "the agent claimed this about itself".
+// Provenance
 // ---------------------------------------------------------------------------
 
 export type ProvenanceSource =
-  | 'ONCHAIN'
-  | 'ERC8004_METADATA'
+  | 'SOLANA_MAINNET'
+  | 'SAID_PROTOCOL'
+  | 'SAID_METADATA'
   | 'INDEXER'
-  | 'AGENTPROOF_MEASUREMENT';
+  | 'ONCHAIN'
+  | 'AGENTPROOF_MEASUREMENT'
+  | 'AGENTPROOF_SENTINEL_MEASUREMENT';
 
 export interface Provenance {
   source: ProvenanceSource;
-  /** Free-text identifier of the concrete origin, e.g. "8004scan:v1" or an RPC URL/label. Never a raw secret or credential. */
+  /** Free-text identifier of concrete origin, e.g. "said-protocol:api" or "sentinel-probe:reachability" */
   origin: string;
-  /** When AgentProof itself observed/ingested this, not necessarily when the underlying fact became true onchain. */
-  observedAt: string; // ISO 8601
+  /** ISO 8601 timestamp when Sentinel observed or ingested this fact */
+  observedAt: string;
 }
 
 // ---------------------------------------------------------------------------
-// Agent identity & metadata
+// SAID Agent Identity & Verification Status
 // ---------------------------------------------------------------------------
 
+export type SaidVerificationStatus =
+  | 'VERIFIED'
+  | 'UNVERIFIED'
+  | 'REGISTRATION_PENDING'
+  | 'VERIFICATION_PENDING';
+
+export type SaidTrustTier = 'TIER_1' | 'TIER_2' | 'TIER_3' | 'UNRANKED' | string;
+
 export interface AgentIdentity {
-  /** AgentProof's own stable internal id (e.g. `${chainId}:${onchainId}`). */
+  /** Internal stable identifier: `solana:${walletAddress}` */
   id: string;
   chain: ChainId;
-  /** The ERC-8004 onchain identifier / registry entry id, as a string (may be a numeric tokenId or address-derived id depending on registry). */
-  onchainId: string;
-  /** Registry contract address that issued this identity, if known. */
-  registryAddress?: string;
+  /** Base58-encoded 32-byte Solana public key */
+  walletAddress: string;
+  name: string;
+  description?: string;
+  verificationStatus: SaidVerificationStatus;
+  trustTier?: SaidTrustTier;
+  saidReputationScore?: number;
+  skills: string[];
+  serviceTypes: string[];
+  website?: string;
+  mcpEndpoint?: string;
+  a2aEndpoint?: string;
+  firstSeenAt: string;
+  lastSyncedAt: string;
+  isMonitored: boolean;
   provenance: Provenance;
 }
 
 export interface AgentMetadata {
   agentId: string;
-  name?: string;
+  name: string;
   description?: string;
-  /** Raw metadata URI as declared onchain (e.g. an IPFS/HTTPS URI), before resolution. */
-  metadataUri?: string;
-  /** Whether AgentProof was able to fetch + parse the metadata document. This is an *observation*, not an assumption. */
+  website?: string;
+  skills: string[];
+  serviceTypes: string[];
+  mcpEndpoint?: string;
+  a2aEndpoint?: string;
   metadataResolved: boolean;
   provenance: Provenance;
 }
 
 // ---------------------------------------------------------------------------
-// Services — ERC-8004 metadata conventions currently in the wild use both
-// "services" (current) and "endpoints" (legacy). AgentProof normalizes both
-// into this single shape and prefers "services" when an agent declares both.
+// Services & Published Endpoints
 // ---------------------------------------------------------------------------
 
 export type ServiceProtocol = 'HTTP' | 'A2A' | 'MCP' | 'UNKNOWN';
+export type EndpointType = 'MCP' | 'A2A' | 'HTTP' | 'SERVICE';
 
 export interface AgentService {
   id: string;
   agentId: string;
   chain: ChainId;
-  /** How this service was declared in the source metadata: current ("services") or legacy ("endpoints") convention. */
-  declarationForm: 'SERVICES' | 'ENDPOINTS';
+  endpointType: EndpointType;
   protocol: ServiceProtocol;
-  /** The advertised URL. AgentProof probes this — it never trusts it as already-working. */
   url: string;
+  enabled: boolean;
+  firstMonitoredAt?: string;
+  lastMonitoredAt?: string;
+  failureCount: number;
+  lastSuccessAt?: string;
   provenance: Provenance;
 }
 
 // ---------------------------------------------------------------------------
-// Probe targets — what the probe engine is asked to check. Distinct from
-// ProbeObservation (the result). A target is a request; an observation is
-// a timestamped fact about what happened when AgentProof acted on it.
+// Probes & Observations
 // ---------------------------------------------------------------------------
 
 export interface ProbeTarget {
   agentId: string;
   chain: ChainId;
-  serviceId: string;
+  serviceId?: string;
   url: string;
   protocol: ServiceProtocol;
 }
 
-// ---------------------------------------------------------------------------
-// Probes & observations
-// ---------------------------------------------------------------------------
-
 export type ProbeType =
-  | 'METADATA_RESOLUTION'
   | 'SERVICE_REACHABILITY'
   | 'HTTP_STATUS'
   | 'RESPONSE_LATENCY'
-  | 'PROTOCOL_RESPONSE_VALIDITY';
+  | 'PROTOCOL_RESPONSE_VALIDITY'
+  | 'MCP_HEALTH'
+  | 'A2A_HEALTH';
 
-/**
- * Distinguishes "the agent's service failed" from "AgentProof itself failed
- * to observe it" — the build prompt is explicit that these must never be
- * conflated (an upstream indexer outage must not make an agent look
- * unreliable).
- */
 export type ProbeOutcome =
   | 'SUCCESS'
   | 'AGENT_UNREACHABLE'
@@ -151,11 +158,8 @@ export interface ProbeObservation {
   probeType: ProbeType;
   timestamp: string; // ISO 8601
   outcome: ProbeOutcome;
-  /** Present only when outcome === 'SUCCESS' and the probe measures time. */
   latencyMs?: number;
-  /** Human-readable, non-sensitive failure detail. Never includes response bodies, credentials, or headers verbatim. */
   failureReason?: string;
-  /** e.g. HTTP status code, when applicable. */
   httpStatus?: number;
   provenance: Provenance;
   probeVersion: string;
@@ -163,25 +167,17 @@ export interface ProbeObservation {
 }
 
 // ---------------------------------------------------------------------------
-// Reliability windows — computed, not stored as raw truth. Always derived
-// from ProbeObservation rows; never hand-edited.
+// Reliability Calculations & Windows
 // ---------------------------------------------------------------------------
 
 export type ReliabilityWindowSize = '24h' | '7d' | '30d';
 
-/**
- * How much measurement coverage backs a displayed reliability window.
- * This is NEVER a judgment about the agent — see docs/RELIABILITY_METHODOLOGY.md.
- * "STRONG" means "AgentProof has sufficient measurement coverage for the
- * displayed evidence", not "this agent is safe/good/trustworthy".
- */
 export type EvidenceSufficiency = 'INSUFFICIENT' | 'LIMITED' | 'MODERATE' | 'STRONG';
 
 export interface ReliabilityWindow {
   agentId: string;
   serviceId?: string;
   window: ReliabilityWindowSize;
-  /** True only when sufficiency is at least LIMITED — see methodology doc for the exact thresholds. */
   sufficientData: boolean;
   dataSufficiency: EvidenceSufficiency;
   observationCount: number;
@@ -189,6 +185,7 @@ export interface ReliabilityWindow {
   failureCount: number;
   availabilityPct?: number;
   medianLatencyMs?: number;
+  averageLatencyMs?: number;
   p95LatencyMs?: number;
   lastSuccessfulProbeAt?: string;
   lastProbeAt?: string;
@@ -198,109 +195,155 @@ export interface ReliabilityWindow {
 }
 
 // ---------------------------------------------------------------------------
-// Reputation integrity — signals about the *shape* of feedback data, never
-// a verdict on the agent. Deliberately hedged language throughout.
+// Sentinel Reliability Score (0-100)
+//
+// Factual, transparent operational score calculated purely from:
+// - Measured availability (50%)
+// - Latency speed and consistency (25%)
+// - Historical coverage and sample depth (15%)
+// - Incident frequency and recovery stability (10%)
 // ---------------------------------------------------------------------------
 
-export type IntegritySignalType =
-  | 'HIGH_REVIEWER_CONCENTRATION'
-  | 'UNUSUAL_FEEDBACK_BURST'
-  | 'LOW_REVIEWER_DIVERSITY'
-  | 'POTENTIAL_RECIPROCAL_FEEDBACK_PATTERN';
+export interface SentinelReliabilityScore {
+  score: number; // 0 to 100
+  tier: 'OPTIMAL' | 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'UNMEASURED';
+  availabilityScore: number;
+  latencyScore: number;
+  coverageScore: number;
+  stabilityScore: number;
+  formulaDescription: string;
+  computedAt: string;
+}
 
-export interface IntegritySignal {
+// ---------------------------------------------------------------------------
+// Incidents & Service Health
+// ---------------------------------------------------------------------------
+
+export type IncidentStatus = 'OPEN' | 'RESOLVED';
+
+export interface Incident {
   id: string;
   agentId: string;
-  signalType: IntegritySignalType;
-  /** A short, hedged, human-readable description. Never asserts fraud/Sybil as fact. */
-  description: string;
-  detectedAt: string;
-  methodologyVersion: string;
-  provenance: Provenance;
-}
-
-export interface ReputationEvidenceBase {
-  agentId: string;
-  methodologyVersion: string;
-  computedAt: string;
-  provenance: Provenance;
-}
-
-/**
- * Whether feedback data for an agent is actually available to analyze —
- * kept strictly separate from the analysis result itself. This exists so
- * "we haven't built/run feedback ingestion yet" (`NOT_INGESTED`) can never
- * be silently confused with "we ingested and found zero feedback records"
- * (`AVAILABLE` with `feedbackCount: 0`). Those are different facts and
- * must never collapse into the same empty-array response — see
- * docs/REPUTATION_INTEGRITY.md "Feedback availability semantics".
- */
-export type FeedbackAvailability =
-  | 'NOT_INGESTED'
-  | 'AVAILABLE'
-  | 'UPSTREAM_UNAVAILABLE'
-  | 'UNSUPPORTED';
-
-/**
- * Reputation-integrity evidence for an agent. A discriminated union on
- * `feedbackAvailability`: the analysis fields (`feedbackCount`,
- * `dataSufficiency`, etc.) only exist when feedback was actually
- * available and analyzed. When it wasn't, callers get an honest status
- * and nothing else — never a fabricated "0 feedback, INSUFFICIENT"
- * result standing in for "we never checked."
- */
-export type ReputationEvidence =
-  | (ReputationEvidenceBase & {
-      feedbackAvailability: 'AVAILABLE';
-      feedbackCount: number;
-      uniqueReviewerCount: number;
-      /** Herfindahl-Hirschman-style concentration index across reviewers, 0..1 (see docs/REPUTATION_INTEGRITY.md). Only present once feedbackCount clears the minimum-sample threshold. */
-      reviewerConcentration?: number;
-      /** Share of feedback contributed by reviewers who left more than one review. Same threshold gate as reviewerConcentration. */
-      repeatReviewConcentration?: number;
-      dataSufficiency: EvidenceSufficiency;
-      integritySignals: IntegritySignal[];
-    })
-  | (ReputationEvidenceBase & {
-      feedbackAvailability: Exclude<FeedbackAvailability, 'AVAILABLE'>;
-      integritySignals: [];
-    });
-
-/**
- * A single feedback/review record about an agent. This is the raw input to
- * the reputation-integrity engine — never presented directly as a verdict.
- */
-export interface FeedbackRecord {
-  agentId: string;
-  reviewerId: string;
-  timestamp: string; // ISO 8601
-  provenance: Provenance;
+  serviceId?: string;
+  status: IncidentStatus;
+  startedAt: string;
+  resolvedAt?: string;
+  durationSeconds?: number;
+  failureReason: string;
+  failedChecksCount?: number;
+  consecutiveFailures?: number;
+  recoveryObservedAt?: string;
 }
 
 // ---------------------------------------------------------------------------
-// Passport — the public-facing aggregate. Always assembled at read time
-// from the above; never a separately-stored source of truth.
+// SAID Trust Screen (Machine-Payable / x402)
+// ---------------------------------------------------------------------------
+
+export type TrustScreenVerdict = 'allow' | 'review' | 'caution';
+
+export interface TrustScreenResult {
+  wallet: string;
+  verdict: TrustScreenVerdict;
+  trustScore?: number;
+  eigenTrustScore?: number;
+  reputationDimensions?: {
+    reliability?: number;
+    transactionCount?: number;
+    disputeRate?: number;
+    tenureDays?: number;
+  };
+  checkedAt: string;
+  paymentMode: 'FREE_DATA' | 'X402_PAID';
+  rawResponse?: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Synchronization Runs & Telemetry
+// ---------------------------------------------------------------------------
+
+export interface SyncRun {
+  id: string;
+  startedAt: string;
+  finishedAt?: string;
+  agentsDiscovered: number;
+  agentsUpdated: number;
+  servicesRegistered: number;
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  errorMessage?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Agent Passport (Aggregated Read Model)
 // ---------------------------------------------------------------------------
 
 export interface AgentPassport {
   identity: AgentIdentity;
   metadata: AgentMetadata;
   services: AgentService[];
-  reliability: ReliabilityWindow[];
-  reputation?: ReputationEvidence;
+  reliability: Record<ReliabilityWindowSize, ReliabilityWindow>;
+  sentinelScore: SentinelReliabilityScore;
+  activeIncident?: Incident;
+  recentIncidents: Incident[];
   recentObservations: ProbeObservation[];
+  trustScreen?: TrustScreenResult;
   generatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
-// Methodology versioning — introduced from day one per the build prompt.
-// Bump these explicitly (never silently) when the underlying calculation
-// changes, and keep historical observations interpretable under the
-// methodology version they were collected with.
+// Methodology Versions
 // ---------------------------------------------------------------------------
 
 export const METHODOLOGY_VERSIONS = {
-  probe: '0.1.0',
-  reliability: '0.1.0',
-  reputationIntegrity: '0.1.0',
+  probe: '0.2.0-solana',
+  reliability: '0.2.0-sentinel',
+  reputationIntegrity: '0.2.0-said',
 } as const;
+
+// ---------------------------------------------------------------------------
+// Feedback & Reputation Evidence
+// ---------------------------------------------------------------------------
+
+export interface FeedbackRecord {
+  id: string;
+  agentId: string;
+  reviewerId: string;
+  timestamp: string;
+  score?: number;
+  tags?: string[];
+  submittedAt?: string;
+}
+
+export type FeedbackAvailability = 'AVAILABLE' | 'NOT_INGESTED' | 'NOT_APPLICABLE' | 'UPSTREAM_INDEXER_FAILURE';
+
+export interface FeedbackQueryResult {
+  status: FeedbackAvailability;
+  records: FeedbackRecord[];
+}
+
+export interface IntegritySignal {
+  id: string;
+  agentId: string;
+  signalType: string;
+  severity?: 'INFO' | 'WARNING' | 'CRITICAL';
+  description: string;
+  detectedAt: string;
+  methodologyVersion: string;
+  provenance: Provenance;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ReputationEvidence {
+  agentId: string;
+  feedbackAvailability: FeedbackAvailability;
+  feedbackCount?: number;
+  uniqueReviewerCount?: number;
+  dataSufficiency?: EvidenceSufficiency;
+  integritySignals: IntegritySignal[];
+  hhiIndex?: number;
+  reviewerConcentration?: number;
+  repeatReviewConcentration?: number;
+  methodologyVersion: string;
+  computedAt: string;
+  provenance: Provenance;
+}
+

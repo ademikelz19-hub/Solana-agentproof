@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { db, probeRuns } from '@agentproof/db';
+import { db, probeRuns, syncRuns } from '@agentproof/db';
+import { SAID_PROGRAM_ID } from '@agentproof/core';
 import { desc } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
@@ -8,6 +9,7 @@ export async function GET() {
   const timestamp = new Date().toISOString();
 
   let latestRunAt: string | null = null;
+  let latestSyncAt: string | null = null;
   let freshness: 'FRESH' | 'STALE' | 'UNKNOWN' = 'UNKNOWN';
 
   try {
@@ -22,12 +24,26 @@ export async function GET() {
       .orderBy(desc(probeRuns.startedAt))
       .limit(1);
 
+    const [latestSync] = await db
+      .select({
+        id: syncRuns.id,
+        finishedAt: syncRuns.finishedAt,
+        startedAt: syncRuns.startedAt,
+      })
+      .from(syncRuns)
+      .orderBy(desc(syncRuns.startedAt))
+      .limit(1);
+
     if (latestRun) {
       const runTime = latestRun.finishedAt ?? latestRun.startedAt;
       latestRunAt = runTime.toISOString();
       const ageMs = Date.now() - runTime.getTime();
-      // Fresh if run within last 3 hours (hourly schedule with jitter margin)
-      freshness = ageMs <= 3 * 60 * 60 * 1000 ? 'FRESH' : 'STALE';
+      freshness = ageMs <= 30 * 60 * 1000 ? 'FRESH' : 'STALE';
+    }
+
+    if (latestSync) {
+      const syncTime = latestSync.finishedAt ?? latestSync.startedAt;
+      latestSyncAt = syncTime.toISOString();
     }
   } catch (err) {
     freshness = 'UNKNOWN';
@@ -36,12 +52,15 @@ export async function GET() {
   return NextResponse.json(
     {
       status: 'ok',
-      service: 'agentproof',
+      service: 'agentproof-sentinel',
+      network: 'Solana Mainnet',
+      saidProgramId: SAID_PROGRAM_ID,
       timestamp,
-      version: '0.1.0',
+      version: '0.2.0',
       monitoring: {
         status: 'active',
         latestRunAt,
+        latestSyncAt,
         freshness,
       },
     },

@@ -10,6 +10,16 @@ dist
 scratch
 .agents
 *.tsbuildinfo
-
 .vercel
-.env*
+
+# Solana / Secret Signing Material
+wallet.json
+*id.json
+*keypair*.json
+*.pem
+*.key
+*.secret
+id.json
+phantom.json
+backpack.json
+solana-keypair*.json

@@ -14,7 +14,7 @@ function expectAvailable(result: ReturnType<typeof computeReputationEvidence>) {
   return result;
 }
 
-const AGENT = 'bsc:1';
+const AGENT = 'solana:5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G';
 const NOW = new Date('2026-08-28T12:00:00.000Z');
 
 function fb(reviewerId: string, daysAgo: number): FeedbackRecord {

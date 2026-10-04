@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SUPPORTED_CHAINS, type ChainId } from '@agentproof/core';
+import { SUPPORTED_CHAINS, type ChainId, isValidSolanaAddress } from '@agentproof/core';
 
 const chainIds = SUPPORTED_CHAINS.map((c) => c.id) as [ChainId, ...ChainId[]];
 
@@ -12,15 +12,13 @@ export function normalizeChain(rawChain?: string | null): ChainId | null {
   if (!rawChain) return null;
   const lower = rawChain.trim().toLowerCase();
   if (
-    lower === 'bsc' ||
-    lower === '56' ||
-    lower === 'bnb' ||
-    lower === 'bscmainnet' ||
-    lower === 'bsc-mainnet' ||
-    lower === 'binance' ||
-    lower === 'binancesmartchain'
+    lower === 'solana' ||
+    lower === 'sol' ||
+    lower === 'mainnet' ||
+    lower === 'mainnet-beta' ||
+    lower === 'solana-mainnet'
   ) {
-    return 'bsc';
+    return 'solana';
   }
   return null;
 }
@@ -31,9 +29,10 @@ export function parseAgentParams(params: { chain: string; id: string }):
   let normalizedParams = params;
   try {
     const normalizedChain = normalizeChain(params.chain) ?? params.chain;
+    const decodedId = decodeURIComponent(params.id).trim();
     normalizedParams = {
       chain: normalizedChain,
-      id: decodeURIComponent(params.id),
+      id: decodedId,
     };
   } catch {}
 

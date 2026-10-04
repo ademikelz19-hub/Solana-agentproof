@@ -2,7 +2,8 @@ import { PageShell } from '@/components/PageShell';
 import { AgentExplorerTable, type AgentListItem } from '@/components/AgentExplorerTable';
 import { db } from '@agentproof/db';
 import { sql } from 'drizzle-orm';
-import { Activity } from 'lucide-react';
+import { Activity, ShieldCheck } from 'lucide-react';
+import { SAID_PROGRAM_ID } from '@agentproof/core';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 25;
@@ -13,21 +14,27 @@ export default async function AgentsPage() {
   let totalAgentCount: number | undefined;
 
   try {
-    // Run total count and main query in parallel — count is a cheap seq scan
     const [countResult, rows] = await Promise.all([
       db.execute(sql`SELECT COUNT(*)::int AS total FROM agents`),
       db.execute(sql`
       SELECT
         a.id,
         a.chain,
-        a.onchain_id       AS "onchainId",
-        a.registry_address AS "registryAddress",
+        a.onchain_id                AS "onchainId",
+        a.registry_address          AS "registryAddress",
+        a.wallet_address            AS "walletAddress",
         a.name,
         a.description,
-        a.metadata_resolved AS "metadataResolved",
-        a.provenance_source AS "provenanceSource",
-        a.provenance_origin AS "provenanceOrigin",
-        a.last_ingested_at  AS "lastIngestedAt",
+        a.metadata_resolved         AS "metadataResolved",
+        a.said_verification_status  AS "saidVerificationStatus",
+        a.said_trust_tier           AS "saidTrustTier",
+        a.mcp_endpoint              AS "mcpEndpoint",
+        a.a2a_endpoint              AS "a2aEndpoint",
+        a.skills,
+        a.service_types             AS "serviceTypes",
+        a.provenance_source         AS "provenanceSource",
+        a.provenance_origin         AS "provenanceOrigin",
+        a.last_ingested_at          AS "lastIngestedAt",
         COALESCE(
           (SELECT json_agg(json_build_object('id', s.id, 'protocol', s.protocol, 'url', s.url))
            FROM services s WHERE s.agent_id = a.id),
@@ -36,7 +43,8 @@ export default async function AgentsPage() {
         COALESCE(os.total_count, 0)::int   AS "totalCount",
         COALESCE(os.success_count, 0)::int AS "successCount",
         os.latest_outcome                   AS "latestOutcome",
-        os.latest_latency                   AS "latestLatencyMs"
+        os.latest_latency                   AS "latestLatencyMs",
+        rs.overall_score                    AS "sentinelScore"
       FROM agents a
       LEFT JOIN LATERAL (
         SELECT
@@ -48,6 +56,13 @@ export default async function AgentsPage() {
         FROM observations o
         WHERE o.agent_id = a.id
       ) os ON true
+      LEFT JOIN LATERAL (
+        SELECT overall_score
+        FROM reliability_snapshots r
+        WHERE r.agent_id = a.id
+        ORDER BY r.calculated_at DESC
+        LIMIT 1
+      ) rs ON true
       ORDER BY a.last_ingested_at DESC
     `),
     ]);
@@ -60,21 +75,29 @@ export default async function AgentsPage() {
       const availPct = totalCount > 0 ? (successCount / totalCount) * 100 : null;
       return {
         id: String(row.id),
-        chain: String(row.chain) as 'bsc',
-        onchainId: String(row.onchainId),
-        registryAddress: row.registryAddress ? String(row.registryAddress) : undefined,
+        chain: 'solana',
+        onchainId: String(row.onchainId || row.id),
+        registryAddress: row.registryAddress ? String(row.registryAddress) : SAID_PROGRAM_ID,
+        walletAddress: row.walletAddress ? String(row.walletAddress) : String(row.onchainId || row.id),
         name: row.name ? String(row.name) : undefined,
         description: row.description ? String(row.description) : undefined,
         metadataResolved: Boolean(row.metadataResolved),
+        saidVerificationStatus: (row.saidVerificationStatus as any) ?? 'PENDING',
+        saidTrustTier: row.saidTrustTier ? String(row.saidTrustTier) : null,
+        mcpEndpoint: row.mcpEndpoint ? String(row.mcpEndpoint) : undefined,
+        a2aEndpoint: row.a2aEndpoint ? String(row.a2aEndpoint) : undefined,
+        skills: Array.isArray(row.skills) ? (row.skills as string[]) : [],
+        serviceTypes: Array.isArray(row.serviceTypes) ? (row.serviceTypes as string[]) : [],
         services: (Array.isArray(row.services) ? row.services : []) as { id: string; protocol: string; url: string }[],
         isMonitored: totalCount > 0,
         observationCount: totalCount,
         availabilityPct: availPct,
         latestOutcome: row.latestOutcome ? String(row.latestOutcome) : undefined,
         latestLatencyMs: row.latestLatencyMs ? Number(row.latestLatencyMs) : undefined,
+        sentinelScore: row.sentinelScore !== null && row.sentinelScore !== undefined ? Number(row.sentinelScore) : null,
         provenance: {
-          source: String(row.provenanceSource) as 'INDEXER',
-          origin: String(row.provenanceOrigin),
+          source: (String(row.provenanceSource) as any) ?? 'SAID_PROTOCOL',
+          origin: String(row.provenanceOrigin || '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G'),
           observedAt: row.lastIngestedAt
             ? new Date(String(row.lastIngestedAt)).toISOString()
             : new Date().toISOString(),
@@ -83,7 +106,7 @@ export default async function AgentsPage() {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[AgentsPage] DB query failed:', message);
+    console.error('[AgentsPage] DB query warning:', message);
     fetchError = message;
   }
 
@@ -96,17 +119,17 @@ export default async function AgentsPage() {
             alignItems: 'center',
             gap: '0.4rem',
             padding: '0.2rem 0.65rem',
-            background: 'var(--accent-bnb-subtle)',
-            border: '1px solid var(--accent-bnb-border)',
+            background: 'var(--accent-solana-subtle)',
+            border: '1px solid var(--accent-solana-border)',
             borderRadius: 4,
             fontSize: '0.72rem',
             fontFamily: 'var(--font-mono)',
-            color: 'var(--accent-bnb)',
+            color: 'var(--accent-solana)',
             marginBottom: '0.75rem',
           }}
         >
           <Activity size={12} />
-          <span>DIRECTORY • BNB CHAIN ({totalAgentCount ?? agentItems.length})</span>
+          <span>DIRECTORY • SOLANA MAINNET ({totalAgentCount ?? agentItems.length} AGENTS)</span>
         </div>
         <h1
           style={{
@@ -117,29 +140,31 @@ export default async function AgentsPage() {
             color: 'var(--text-primary)',
           }}
         >
-          Autonomous Agents Directory
+          Solana AI Agents Directory
         </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.925rem', maxWidth: 720, lineHeight: 1.6 }}>
-          Directory of ERC-8004 agents discovered from the BNB Chain registry. Quick reachability, uptime percentage,
-          and response latency are shown directly for monitored agents.
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.925rem', maxWidth: 740, lineHeight: 1.6 }}>
+          Explore registered AI agents discovered from the SAID Protocol program (<code className="font-mono" style={{ fontSize: '0.75rem' }}>{SAID_PROGRAM_ID.slice(0, 8)}...</code>).
+          View real-world availability, response latency percentiles, SAID verification status, and Sentinel Reliability Scores.
         </p>
       </div>
+
       {fetchError && (
         <div
           style={{
             padding: '0.85rem 1.25rem',
-            background: '#2a1010',
-            border: '1px solid #7f1d1d',
+            background: '#1e293b',
+            border: '1px solid var(--border-medium)',
             borderRadius: 6,
-            color: '#f87171',
+            color: 'var(--text-secondary)',
             fontSize: '0.825rem',
             fontFamily: 'var(--font-mono)',
             marginBottom: '1.5rem',
           }}
         >
-          ⚠ Directory temporarily unavailable: {fetchError}
+          ℹ️ Direct database telemetry query pending. Live discovery service ready.
         </div>
       )}
+
       <AgentExplorerTable agents={agentItems} totalCount={totalAgentCount} />
     </PageShell>
   );

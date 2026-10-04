@@ -21,7 +21,7 @@ Every successful response:
 Every error response (stable schema across all routes):
 
 ```json
-{ "error": { "code": "NOT_FOUND", "message": "No agent xyz on chain bsc" } }
+{ "error": { "code": "NOT_FOUND", "message": "No agent xyz on chain solana" } }
 ```
 
 `code` is one of `NOT_FOUND` (404), `VALIDATION_ERROR` (400),
@@ -59,16 +59,16 @@ Missing data is never presented as zero or a default value:
 
 List known agents.
 
-Query: `chain` (optional, e.g. `bsc`), `limit`, `cursor`.
+Query: `chain` (optional, e.g. `solana`), `limit`, `cursor`.
 
 ```json
 // EXAMPLE RESPONSE — NOT PRODUCTION DATA
 {
   "data": {
     "items": [
-      { "id": "bsc:1", "chain": "bsc", "onchainId": "1", "provenance": { "source": "ONCHAIN", "origin": "bsc-rpc", "observedAt": "..." } }
+      { "id": "solana:5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G", "chain": "solana", "onchainId": "5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G", "provenance": { "source": "SAID_PROTOCOL", "origin": "said-protocol", "observedAt": "..." } }
     ],
-    "nextCursor": "bsc:1"
+    "nextCursor": "solana:5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G"
   },
   "generatedAt": "..."
 }
@@ -80,7 +80,7 @@ Single agent identity + metadata. 404 if not found.
 
 ```json
 // EXAMPLE RESPONSE — NOT PRODUCTION DATA
-{ "data": { "identity": { "id": "bsc:1", "chain": "bsc", "onchainId": "1", "provenance": {...} }, "metadata": null }, "generatedAt": "..." }
+{ "data": { "identity": { "id": "solana:5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G", "chain": "solana", "onchainId": "5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G", "provenance": {...} }, "metadata": null }, "generatedAt": "..." }
 ```
 
 ### `GET /api/v1/agents/:chain/:id/services`

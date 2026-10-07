@@ -27,9 +27,11 @@ async function main() {
   console.log('====================================================');
 
   if (!process.env.DATABASE_URL) {
-    throw new Error(
-      'DATABASE_URL is not set. Please ensure .env.local exists with a valid PostgreSQL connection string.',
-    );
+    console.warn('[Sentinel Monitor] ⚠️ DATABASE_URL is not set in environment or GitHub Secrets.');
+    console.warn('To enable autonomous monitoring via GitHub Actions or locally, configure DATABASE_URL:');
+    console.warn('  - On GitHub: Settings -> Secrets and variables -> Actions -> New repository secret -> DATABASE_URL');
+    console.warn('  - Locally: Add DATABASE_URL to your .env.local file');
+    process.exit(0);
   }
 
   const result = await executeMonitoringCycle({

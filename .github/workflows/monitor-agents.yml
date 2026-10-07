@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   monitor:
-    name: Probe Active BSC Cohort
+    name: Probe Active Solana SAID Cohort
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -32,6 +32,6 @@ jobs:
       - name: Run hardened probe monitoring
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          EIGHT004SCAN_API_KEY: ${{ secrets.EIGHT004SCAN_API_KEY }}
-          EIGHT_O_FOUR_API_KEY: ${{ secrets.EIGHT_O_FOUR_API_KEY }}
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+          SAID_API_BASE_URL: ${{ secrets.SAID_API_BASE_URL }}
         run: npx tsx scripts/run-monitoring.ts

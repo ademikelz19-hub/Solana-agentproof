@@ -23,3 +23,6 @@ id.json
 phantom.json
 backpack.json
 solana-keypair*.json
+
+.vercel
+.env*

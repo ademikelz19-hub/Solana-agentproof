@@ -20,21 +20,20 @@ export default async function AgentsPage() {
       SELECT
         a.id,
         a.chain,
-        a.onchain_id                AS "onchainId",
-        a.registry_address          AS "registryAddress",
+        a.wallet_address            AS "onchainId",
         a.wallet_address            AS "walletAddress",
         a.name,
         a.description,
         a.metadata_resolved         AS "metadataResolved",
-        a.said_verification_status  AS "saidVerificationStatus",
-        a.said_trust_tier           AS "saidTrustTier",
+        a.verification_status       AS "saidVerificationStatus",
+        a.trust_tier                AS "saidTrustTier",
         a.mcp_endpoint              AS "mcpEndpoint",
         a.a2a_endpoint              AS "a2aEndpoint",
         a.skills,
         a.service_types             AS "serviceTypes",
         a.provenance_source         AS "provenanceSource",
         a.provenance_origin         AS "provenanceOrigin",
-        a.last_ingested_at          AS "lastIngestedAt",
+        a.last_synced_at            AS "lastSyncedAt",
         COALESCE(
           (SELECT json_agg(json_build_object('id', s.id, 'protocol', s.protocol, 'url', s.url))
            FROM services s WHERE s.agent_id = a.id),
@@ -44,7 +43,7 @@ export default async function AgentsPage() {
         COALESCE(os.success_count, 0)::int AS "successCount",
         os.latest_outcome                   AS "latestOutcome",
         os.latest_latency                   AS "latestLatencyMs",
-        rs.overall_score                    AS "sentinelScore"
+        rs.sentinel_score                   AS "sentinelScore"
       FROM agents a
       LEFT JOIN LATERAL (
         SELECT
@@ -57,13 +56,13 @@ export default async function AgentsPage() {
         WHERE o.agent_id = a.id
       ) os ON true
       LEFT JOIN LATERAL (
-        SELECT overall_score
+        SELECT sentinel_score
         FROM reliability_snapshots r
         WHERE r.agent_id = a.id
-        ORDER BY r.calculated_at DESC
+        ORDER BY r.computed_at DESC
         LIMIT 1
       ) rs ON true
-      ORDER BY a.last_ingested_at DESC
+      ORDER BY a.last_synced_at DESC
     `),
     ]);
 
@@ -73,11 +72,26 @@ export default async function AgentsPage() {
       const totalCount = Number(row.totalCount ?? 0);
       const successCount = Number(row.successCount ?? 0);
       const availPct = totalCount > 0 ? (successCount / totalCount) * 100 : null;
+
+      let skills: string[] = [];
+      if (Array.isArray(row.skills)) {
+        skills = row.skills as string[];
+      } else if (typeof row.skills === 'string') {
+        try { skills = JSON.parse(row.skills); } catch {}
+      }
+
+      let serviceTypes: string[] = [];
+      if (Array.isArray(row.serviceTypes)) {
+        serviceTypes = row.serviceTypes as string[];
+      } else if (typeof row.serviceTypes === 'string') {
+        try { serviceTypes = JSON.parse(row.serviceTypes); } catch {}
+      }
+
       return {
         id: String(row.id),
         chain: 'solana',
         onchainId: String(row.onchainId || row.id),
-        registryAddress: row.registryAddress ? String(row.registryAddress) : SAID_PROGRAM_ID,
+        registryAddress: SAID_PROGRAM_ID,
         walletAddress: row.walletAddress ? String(row.walletAddress) : String(row.onchainId || row.id),
         name: row.name ? String(row.name) : undefined,
         description: row.description ? String(row.description) : undefined,
@@ -86,8 +100,8 @@ export default async function AgentsPage() {
         saidTrustTier: row.saidTrustTier ? String(row.saidTrustTier) : null,
         mcpEndpoint: row.mcpEndpoint ? String(row.mcpEndpoint) : undefined,
         a2aEndpoint: row.a2aEndpoint ? String(row.a2aEndpoint) : undefined,
-        skills: Array.isArray(row.skills) ? (row.skills as string[]) : [],
-        serviceTypes: Array.isArray(row.serviceTypes) ? (row.serviceTypes as string[]) : [],
+        skills,
+        serviceTypes,
         services: (Array.isArray(row.services) ? row.services : []) as { id: string; protocol: string; url: string }[],
         isMonitored: totalCount > 0,
         observationCount: totalCount,
@@ -96,10 +110,10 @@ export default async function AgentsPage() {
         latestLatencyMs: row.latestLatencyMs ? Number(row.latestLatencyMs) : undefined,
         sentinelScore: row.sentinelScore !== null && row.sentinelScore !== undefined ? Number(row.sentinelScore) : null,
         provenance: {
-          source: (String(row.provenanceSource) as any) ?? 'SAID_PROTOCOL',
-          origin: String(row.provenanceOrigin || '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G'),
-          observedAt: row.lastIngestedAt
-            ? new Date(String(row.lastIngestedAt)).toISOString()
+          source: (String(row.provenanceSource || 'SAID_PROTOCOL') as any),
+          origin: String(row.provenanceOrigin || SAID_PROGRAM_ID),
+          observedAt: row.lastSyncedAt
+            ? new Date(String(row.lastSyncedAt)).toISOString()
             : new Date().toISOString(),
         },
       };

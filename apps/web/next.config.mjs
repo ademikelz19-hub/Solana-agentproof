@@ -14,15 +14,15 @@ config({ path: path.join(monorepoRoot, '.env.local') });
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  serverExternalPackages: [
-    '@agentproof/sources',
+  transpilePackages: [
+    '@agentproof/core',
     '@agentproof/db',
     '@agentproof/probes',
-    '@solana/web3.js',
-    '@said-protocol/agent',
-    'pg',
+    '@agentproof/reliability',
+    '@agentproof/reputation',
+    '@agentproof/sources',
   ],
+  serverExternalPackages: ['pg'],
   async headers() {
     return [
       {

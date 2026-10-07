@@ -31,8 +31,10 @@ function getDb(): DrizzleDb {
     );
   }
 
+  const isLocal = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
   const pool = new Pool({
     connectionString,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
     // Reasonable defaults for a serverless-friendly pool:
     max: 5,
     idleTimeoutMillis: 30_000,

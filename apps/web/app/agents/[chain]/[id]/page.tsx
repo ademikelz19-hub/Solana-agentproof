@@ -166,15 +166,24 @@ export default async function AgentPassportPage({
 
   // Normalize chain - Sentinel default is Solana
   const effectiveChain = (chain === 'solana' ? chain : 'solana') as ChainId;
-  let agent = await agentRepository.getAgent(decodedId);
+  let agent = null;
+  try {
+    agent = await agentRepository.getAgent(decodedId);
+  } catch (err) {
+    console.warn('Agent DB lookup warning:', err);
+  }
 
   // If not found in database, attempt live SAID Protocol lookup fallback
+  let liveServicesList: any[] = [];
+  let liveMetadata = null;
   if (!agent) {
     try {
       const saidAdapter = new SaidProtocolAdapter();
       const liveRes = await saidAdapter.getAgentDetails(decodedId);
       if (liveRes.ok && liveRes.data?.identity) {
         agent = liveRes.data.identity;
+        liveServicesList = liveRes.data.services ?? [];
+        liveMetadata = liveRes.data.metadata ?? null;
       }
     } catch (err) {
       console.warn('Live SAID fallback error:', err);
@@ -188,18 +197,31 @@ export default async function AgentPassportPage({
   const now = new Date();
   const since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Load all agent data in parallel
-  const [metadata, servicesList, observationsPage, incidentsList] = await Promise.all([
-    agentRepository.getMetadata(agent.id),
-    agentRepository.getServices(agent.id),
-    observationRepository.listObservations({
-      agentId: agent.id,
-      since,
-      until: now.toISOString(),
-      limit: 100,
-    }),
-    incidentRepository.listIncidents(agent.id, 20),
-  ]);
+  // Load all agent data in parallel with fallback
+  let metadata = liveMetadata;
+  let servicesList = liveServicesList;
+  let observationsPage: { items: any[]; nextCursor?: string } = { items: [] };
+  let incidentsList: any[] = [];
+
+  try {
+    const [metaRes, servRes, obsRes, incRes] = await Promise.all([
+      agentRepository.getMetadata(agent.id),
+      agentRepository.getServices(agent.id),
+      observationRepository.listObservations({
+        agentId: agent.id,
+        since,
+        until: now.toISOString(),
+        limit: 100,
+      }),
+      incidentRepository.listIncidents(agent.id, 20),
+    ]);
+    if (metaRes) metadata = metaRes;
+    if (servRes && servRes.length > 0) servicesList = servRes;
+    if (obsRes) observationsPage = obsRes;
+    if (incRes) incidentsList = incRes;
+  } catch (err) {
+    console.warn('Agent telemetry DB query warning:', err);
+  }
 
   const windows = computeAllWindows({ agentId: agent.id, observations: observationsPage.items, now });
   const openIncidents = incidentsList.filter((i) => i.status === 'OPEN').length;

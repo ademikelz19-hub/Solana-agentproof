@@ -68,9 +68,30 @@ export async function GET() {
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    console.warn('[API /network-stats] Database query fallback:', message);
     return NextResponse.json(
-      { error: 'Failed to compute network telemetry', detail: message },
-      { status: 500 },
+      {
+        network: 'Solana Mainnet',
+        saidProgramId: SAID_PROGRAM_ID,
+        stats: {
+          totalSaidAgents: 0,
+          activelyMonitoredAgents: 0,
+          activeServices: 0,
+          checksCompleted24h: 0,
+          averageNetworkUptimePct: null,
+          activeIncidents: 0,
+          latestRunAt: null,
+        },
+        notice: 'Database telemetry pending connection or initial sync.',
+        timestamp: now.toISOString(),
+      },
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'public, max-age=15, stale-while-revalidate=30',
+          'Access-Control-Allow-Origin': '*',
+        },
+      },
     );
   }
 }

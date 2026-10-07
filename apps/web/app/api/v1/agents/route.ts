@@ -45,12 +45,17 @@ export async function GET(request: NextRequest) {
   }
 
   const limit = pagination.value.limit;
-  const rows = await db
-    .select()
-    .from(agents)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(agents.lastSyncedAt))
-    .limit(limit + 1);
+  let rows: (typeof agents.$inferSelect)[] = [];
+  try {
+    rows = await db
+      .select()
+      .from(agents)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(agents.lastSyncedAt))
+      .limit(limit + 1);
+  } catch (err) {
+    console.warn('[API /agents] Database query pending or fallback:', err);
+  }
 
   const hasMore = rows.length > limit;
   const pageRows = rows.slice(0, limit);

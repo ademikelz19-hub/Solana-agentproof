@@ -96,24 +96,24 @@ export function parseExternalJsonText<T>(
 
 export const rawSaidAgentSchema = z
   .object({
-    wallet: z.string().optional(),
-    walletAddress: z.string().optional(),
-    address: z.string().optional(),
-    name: z.string().optional(),
+    wallet: z.string().nullable().optional(),
+    walletAddress: z.string().nullable().optional(),
+    address: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
     description: z.string().nullable().optional(),
-    isVerified: z.boolean().optional(),
-    verified: z.boolean().optional(),
-    verificationStatus: z.string().optional(),
-    trustTier: z.string().optional(),
-    reputationScore: z.number().optional(),
-    skills: z.array(z.string()).optional(),
-    serviceTypes: z.array(z.string()).optional(),
+    isVerified: z.boolean().nullable().optional(),
+    verified: z.boolean().nullable().optional(),
+    verificationStatus: z.string().nullable().optional(),
+    trustTier: z.string().nullable().optional(),
+    reputationScore: z.number().nullable().optional(),
+    skills: z.array(z.string()).nullable().optional(),
+    serviceTypes: z.array(z.string()).nullable().optional(),
     website: z.string().nullable().optional(),
     mcpEndpoint: z.string().nullable().optional(),
     a2aEndpoint: z.string().nullable().optional(),
-    endpoints: z.record(z.string(), z.string()).optional(),
-    createdAt: z.string().optional(),
-    updatedAt: z.string().optional(),
+    endpoints: z.record(z.string(), z.string().nullable()).nullable().optional(),
+    createdAt: z.string().nullable().optional(),
+    updatedAt: z.string().nullable().optional(),
   })
   .passthrough();
 

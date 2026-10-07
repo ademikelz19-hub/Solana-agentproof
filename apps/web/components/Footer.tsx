@@ -165,7 +165,7 @@ export function Footer() {
               </li>
               <li>
                 <a
-                  href="https://github.com/ademikelz19-hub/agentproof"
+                  href="https://github.com/ademikelz19-hub/Solana-agentproof"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}

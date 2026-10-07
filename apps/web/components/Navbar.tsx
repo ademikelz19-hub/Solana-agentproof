@@ -134,7 +134,7 @@ export function Navbar() {
           <div style={{ width: 1, height: 20, background: 'var(--border-subtle)', margin: '0 0.5rem' }} />
 
           <a
-            href="https://github.com/ademikelz19-hub/agentproof"
+            href="https://github.com/ademikelz19-hub/Solana-agentproof"
             target="_blank"
             rel="noopener noreferrer"
             style={{

@@ -34,9 +34,18 @@ export default async function Home() {
   let activelyMonitoredAgents = 0;
   let totalObservations = 0;
   let activeIncidentsCount = 0;
-  let averageNetworkUptime = 98.4;
+  let averageNetworkUptime = 100;
   let latestRun: typeof probeRuns.$inferSelect | null = null;
-  let recentObservations: (typeof observations.$inferSelect & { agentName?: string | null })[] = [];
+  let recentObservations: {
+    id: string;
+    agentId: string;
+    probeType: string;
+    outcome: string;
+    latencyMs: number | null;
+    httpStatus: number | null;
+    timestamp: Date;
+    agentName?: string | null;
+  }[] = [];
   let featuredAgent: typeof agents.$inferSelect | null = null;
   let featuredServicesCount = 0;
   let featuredObsCount = 0;
@@ -57,7 +66,21 @@ export default async function Home() {
       db.select({ count: count() }).from(observations),
       db.select({ count: count() }).from(incidents).where(eq(incidents.status, 'OPEN')),
       db.select().from(probeRuns).orderBy(desc(probeRuns.startedAt)).limit(1),
-      db.select().from(observations).orderBy(desc(observations.timestamp)).limit(6),
+      db
+        .select({
+          id: observations.id,
+          agentId: observations.agentId,
+          probeType: observations.probeType,
+          outcome: observations.outcome,
+          latencyMs: observations.latencyMs,
+          httpStatus: observations.httpStatus,
+          timestamp: observations.timestamp,
+          agentName: agents.name,
+        })
+        .from(observations)
+        .leftJoin(agents, eq(observations.agentId, agents.id))
+        .orderBy(desc(observations.timestamp))
+        .limit(6),
       db.select({ count: sql<number>`count(distinct ${observations.agentId})::int` }).from(observations),
       db.select().from(agents).orderBy(desc(agents.lastSyncedAt)).limit(1),
     ]);
@@ -240,7 +263,7 @@ export default async function Home() {
         >
           <MetricCard
             label="Agents Monitored"
-            value={totalIndexedAgents > 0 ? totalIndexedAgents : '15+'}
+            value={totalIndexedAgents}
             subvalue="SAID Protocol Registry"
             description="Solana AI agents discovered from SAID program registry."
             icon={Shield}
@@ -248,8 +271,8 @@ export default async function Home() {
             tooltip="Total registered agents discovered and persisted in Sentinel."
           />
           <MetricCard
-            label="Checks Completed (24h)"
-            value={totalObservations > 0 ? totalObservations.toLocaleString() : '1,420'}
+            label="Checks Completed"
+            value={totalObservations.toLocaleString()}
             subvalue="SSRF-Hardened Probes"
             description="Reachability, MCP health, A2A responses, and HTTP latency measurements."
             icon={Database}
@@ -570,8 +593,8 @@ export default async function Home() {
                           gap: '0.35rem',
                         }}
                       >
-                        <span className="font-mono">
-                          {obs.agentId.length > 16 ? `${obs.agentId.slice(0, 6)}...${obs.agentId.slice(-4)}` : obs.agentId}
+                        <span className="font-mono" style={{ fontWeight: 600 }}>
+                          {obs.agentName || (obs.agentId.length > 16 ? `${obs.agentId.slice(0, 6)}...${obs.agentId.slice(-4)}` : obs.agentId)}
                         </span>
                       </Link>
                     </td>

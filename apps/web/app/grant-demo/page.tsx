@@ -20,7 +20,7 @@ import Link from 'next/link';
 export const dynamic = 'force-dynamic';
 
 export default function GrantDemoPage() {
-  const demoWallet = '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G';
+  const demoWallet = '6cQkUCsQHJGJZhnJHYYUic5FUCgd64HChe8APYYDLS4i'; // MEME Factory (Verified SAID Agent)
 
   return (
     <PageShell>

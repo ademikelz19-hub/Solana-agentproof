@@ -32,6 +32,14 @@ import {
 } from '@agentproof/core';
 import { normalizeSaidServices } from './normalize';
 
+import * as dns from 'node:dns';
+
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch {
+  // Ignore if running in unsupported runtime
+}
+
 export const DEFAULT_SAID_API_BASE_URL = 'https://api.saidprotocol.com';
 
 export interface SaidAdapterOptions {
